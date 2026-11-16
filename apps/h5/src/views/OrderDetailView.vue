@@ -156,16 +156,18 @@ function statusIcon(status: OrderStatus): string {
     case "PAID":
       return "balance-pay";
     case "ACCEPTED":
-    case "PREPARING":
+      return "todo-list-o";
+    case "COOKING":
       return "fire-o";
     case "READY":
       return "bag-o";
-    case "PICKED_UP":
-    case "DELIVERED":
     case "COMPLETED":
       return "passed";
     case "CANCELLED":
+    case "CLOSED":
+    case "REJECTED":
       return "close";
+    case "REFUNDING":
     case "REFUNDED":
       return "revoke";
     default:

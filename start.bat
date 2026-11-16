@@ -169,7 +169,7 @@ exit /b 0
 set "KILL_PID="
 for /f "tokens=5" %%P in ('netstat -ano ^| findstr /R "LISTENING" ^| findstr ":%~1 "') do if not defined KILL_PID set "KILL_PID=%%P"
 if defined KILL_PID (
-  echo stopping pid %KILL_PID^ on port %~1
+  echo stopping pid %KILL_PID% on port %~1
   taskkill /t /f /pid %KILL_PID% >nul 2>&1
 )
 exit /b 0
