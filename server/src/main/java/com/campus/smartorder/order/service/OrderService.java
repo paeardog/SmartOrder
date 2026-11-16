@@ -566,6 +566,12 @@ public class OrderService {
         }
     }
 
+    @Transactional
+    public void releaseHeldResources(Order order) {
+        releaseStock(order);
+        marketingService.releaseByOrderNo(order.getOrderNo(), openStateService.now());
+    }
+
     private void refundPaidOrder(Order order, String reason, LocalDateTime now) {
         Refund refund = new Refund();
         refund.setRefundNo("R" + order.getOrderNo());

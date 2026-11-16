@@ -1,6 +1,7 @@
 package com.campus.smartorder.order.service;
 
 import com.campus.smartorder.common.config.SmartOrderProperties;
+import com.campus.smartorder.order.domain.Order;
 import com.campus.smartorder.order.domain.OrderStatus;
 import com.campus.smartorder.order.domain.OperatorType;
 import com.campus.smartorder.order.domain.OrderStatusLog;
@@ -22,12 +23,14 @@ public class OrderScheduledService {
 
     private final OrderMapper orderMapper;
     private final OrderStatusLogMapper statusLogMapper;
+    private final OrderService orderService;
     private final SmartOrderProperties properties;
 
     public OrderScheduledService(OrderMapper orderMapper, OrderStatusLogMapper statusLogMapper,
-                                  SmartOrderProperties properties) {
+                                  OrderService orderService, SmartOrderProperties properties) {
         this.orderMapper = orderMapper;
         this.statusLogMapper = statusLogMapper;
+        this.orderService = orderService;
         this.properties = properties;
     }
 
@@ -44,6 +47,10 @@ public class OrderScheduledService {
         for (Long id : ids) {
             int rows = orderMapper.casClose(id, "支付超时自动关闭", "SYSTEM");
             if (rows > 0) {
+                Order order = orderMapper.selectById(id);
+                if (order != null) {
+                    orderService.releaseHeldResources(order);
+                }
                 OrderStatusLog logEntry = new OrderStatusLog();
                 logEntry.setOrderId(id);
                 logEntry.setFromStatus(OrderStatus.PENDING_PAYMENT);

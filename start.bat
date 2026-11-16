@@ -657,7 +657,7 @@ if errorlevel 1 (
 "%MYSQLADMIN_EXE%" --protocol=tcp -h %DB_HOST% -P %DB_PORT% -u %DB_USER% ping >nul 2>&1
 if not errorlevel 1 goto :db_up
 echo db        not listening on %DB_PORT%, starting mysqld
-start "SmartOrder MySQL %DB_PORT%" /MIN "%MYSQL_BIN%\mysqld.exe" --defaults-file="%INI_FILE%"
+start "" /B "%MYSQL_BIN%\mysqld.exe" --defaults-file="%INI_FILE%" >nul 2>&1
 set "DB_TRIES=0"
 :db_wait
 ping -n 2 127.0.0.1 >nul
