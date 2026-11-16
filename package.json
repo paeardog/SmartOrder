@@ -15,6 +15,7 @@
     "test:db": "node scripts/run-db-tests.mjs",
     "gen:seed-json": "node scripts/gen-seed-json.mjs",
     "dev:h5": "pnpm --filter @smartorder/h5 dev",
+    "dev:web": "pnpm --filter @smartorder/web dev",
     "dev:console": "pnpm --filter @smartorder/console dev",
     "build": "pnpm -r build",
     "typecheck": "pnpm -r typecheck"

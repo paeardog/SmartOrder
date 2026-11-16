@@ -1,68 +1,84 @@
 <template>
-  <div class="so-page so-page--flat">
+  <div class="so-page so-page--flat cart-page">
     <van-nav-bar title="购物车" left-arrow @click-left="router.back()" />
 
     <van-pull-refresh v-model="refreshing" @refresh="onRefresh">
-      <van-skeleton v-if="loading && cart.groups.length === 0" title :row="4" class="cart-skeleton" />
-      <van-empty v-else-if="cart.groups.length === 0" description="购物车是空的" image="search">
-        <van-button type="primary" size="small" @click="router.push({ name: 'home' })">去逛逛</van-button>
-      </van-empty>
+      <div class="cart-body">
+        <van-skeleton v-if="loading && cart.groups.length === 0" title :row="4" class="cart-skeleton so-card" />
+        <van-empty v-else-if="cart.groups.length === 0" image-size="88" description="购物车空空的，去挑点好吃的吧">
+          <van-button type="primary" size="small" round @click="router.push({ name: 'home' })">去逛逛</van-button>
+        </van-empty>
 
-      <template v-else>
-        <section v-for="group in cart.groups" :key="group.merchantId" class="cart-group so-card">
-          <header class="cart-group__head">
-            <div class="cart-group__title">{{ group.merchantName }}</div>
-            <van-button plain size="mini" @click="clearGroup(group.merchantId)">清空</van-button>
-          </header>
+        <template v-else>
+          <section v-for="group in cart.groups" :key="group.merchantId" class="cart-group so-card">
+            <header class="cart-group__head">
+              <div class="cart-group__title">
+                <span class="cart-group__badge"><van-icon name="shop-o" size="14" /></span>
+                <span class="cart-group__name">{{ group.merchantName }}</span>
+              </div>
+              <button class="cart-group__clear" type="button" @click="clearGroup(group.merchantId)">清空</button>
+            </header>
 
-          <div v-for="item in group.items" :key="item.cartItemId" class="cart-item">
-            <van-checkbox :model-value="item.selected" shape="square" @change="(v: boolean) => toggleSelect(item.cartItemId, v)" />
-            <div class="cart-item__image">
-              <img v-if="item.dishImage !== ''" :src="item.dishImage" :alt="item.dishName" loading="lazy" />
-              <van-icon v-else name="photo-o" size="28" />
-            </div>
-            <div class="cart-item__body">
-              <div class="cart-item__name">{{ item.dishName }}</div>
-              <div v-if="item.optionText !== ''" class="cart-item__opt so-muted">{{ item.optionText }}</div>
-              <div class="cart-item__row">
-                <div class="so-price">
-                  <span class="so-price__cny">¥</span>
-                  <span class="so-price__int">{{ formatMoney(item.unitPrice) }}</span>
+            <div v-for="item in group.items" :key="item.cartItemId" class="cart-item">
+              <van-checkbox
+                :model-value="item.selected"
+                shape="square"
+                checked-color="var(--primary)"
+                @change="(v: boolean) => toggleSelect(item.cartItemId, v)"
+              />
+              <div class="cart-item__image">
+                <img v-if="item.dishImage !== ''" :src="item.dishImage" :alt="item.dishName" loading="lazy" @error="hideBrokenImage" />
+                <span v-else class="cart-item__placeholder"><van-icon name="photo-o" size="26" /></span>
+              </div>
+              <div class="cart-item__body">
+                <div class="cart-item__name">{{ item.dishName }}</div>
+                <div v-if="item.optionText !== ''" class="cart-item__opt">{{ item.optionText }}</div>
+                <div class="cart-item__row">
+                  <div class="so-price">
+                    <span class="so-price__cny">¥</span>
+                    <span class="so-price__int">{{ formatMoney(item.unitPrice) }}</span>
+                  </div>
+                  <van-stepper
+                    :model-value="item.quantity"
+                    :min="1"
+                    :max="item.maxBuyPerOrder"
+                    @change="(v: number) => setQuantity(item.cartItemId, v)"
+                  />
                 </div>
-                <van-stepper
-                  :model-value="item.quantity"
-                  :min="1"
-                  :max="item.maxBuyPerOrder"
-                  @change="(v: number) => setQuantity(item.cartItemId, v)"
-                />
               </div>
             </div>
-          </div>
 
-          <div v-if="group.gapToMinimum > 0" class="cart-group__gap so-muted">
-            再买 ¥{{ formatMoney(group.gapToMinimum) }} 起送
-          </div>
-        </section>
-
-        <div class="cart-summary so-card">
-          <div class="so-row so-row--between">
-            <span class="so-muted">已选 {{ cart.selectedCount }} 件</span>
-            <div class="so-price">
-              <span class="so-price__cny">¥</span>
-              <span class="so-price__int">{{ formatMoney(cart.selectedAmount) }}</span>
+            <div v-if="group.gapToMinimum > 0" class="cart-group__gap">
+              <van-icon name="warning-o" />
+              还差 ¥{{ formatMoney(group.gapToMinimum) }} 起送，再去挑一件？
             </div>
+          </section>
+
+          <div class="cart-tip">
+            <van-icon name="bag-o" />
+            到店自取 · 档口出餐后凭取餐码取餐
           </div>
-          <van-button
-            type="primary"
-            block
-            :disabled="cart.selectedCount === 0 || !canCheckout"
-            @click="goCheckout"
-          >
-            {{ checkoutLabel }}
-          </van-button>
-        </div>
-      </template>
+        </template>
+      </div>
     </van-pull-refresh>
+
+    <div v-if="cart.groups.length > 0" class="cart-bar">
+      <div class="cart-bar__left">
+        <span class="cart-bar__label">已选 {{ cart.selectedCount }} 件</span>
+        <div class="so-price">
+          <span class="so-price__cny">¥</span>
+          <span class="so-price__int">{{ formatMoney(cart.selectedAmount) }}</span>
+        </div>
+      </div>
+      <van-button
+        type="primary"
+        round
+        :disabled="cart.selectedCount === 0 || !canCheckout"
+        @click="goCheckout"
+      >
+        {{ checkoutLabel }}
+      </van-button>
+    </div>
   </div>
 </template>
 
@@ -88,8 +104,12 @@ const checkoutLabel = computed(() => {
   if (activeGroup.value.gapToMinimum > 0) {
     return `还差 ¥${formatMoney(activeGroup.value.gapToMinimum)} 起送`;
   }
-  return `去结算 · ¥${formatMoney(cart.selectedAmount)}`;
+  return `去结算`;
 });
+
+function hideBrokenImage(event: Event): void {
+  (event.target as HTMLImageElement).style.display = "none";
+}
 
 async function onRefresh(): Promise<void> {
   await cart.refresh();
@@ -126,38 +146,79 @@ onMounted(async () => {
 </script>
 
 <style scoped>
+.cart-page {
+  padding-bottom: calc(62px + 62px + env(safe-area-inset-bottom) + 1.5rem);
+}
+
+.cart-body {
+  padding: 0.25rem 1rem 0.75rem;
+}
+
 .cart-skeleton {
   padding: 1rem;
 }
 
 .cart-group {
-  margin: 0.75rem;
-  padding: 0.75rem 0.9rem;
+  padding: 0.9rem 0.95rem 0.75rem;
+  margin-bottom: 0.8rem;
 }
 
 .cart-group__head {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding-bottom: 0.5rem;
+  gap: 0.5rem;
+  padding-bottom: 0.6rem;
   border-bottom: 1px solid var(--line-divider);
 }
 
 .cart-group__title {
-  font-weight: var(--font-weight-semibold);
-  color: var(--deep-text);
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  min-width: 0;
 }
 
-.cart-group__gap {
-  padding-top: 0.5rem;
-  font-size: 0.8rem;
+.cart-group__badge {
+  display: grid;
+  place-items: center;
+  width: 24px;
+  height: 24px;
+  flex: none;
+  color: var(--accent-green);
+  background: var(--accent-green-soft);
+  border-radius: 8px;
+}
+
+.cart-group__name {
+  overflow: hidden;
+  color: var(--deep-text);
+  font-size: 0.95rem;
+  font-weight: var(--font-weight-bold);
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.cart-group__clear {
+  flex: none;
+  padding: 0.2rem 0.5rem;
+  background: transparent;
+  border: 0;
+  border-radius: 999px;
+  color: var(--content-meta);
+  font-size: 0.72rem;
+}
+
+.cart-group__clear:active {
+  color: var(--caution);
+  background: var(--caution-soft);
 }
 
 .cart-item {
   display: grid;
-  grid-template-columns: 24px 64px 1fr;
-  gap: 0.6rem;
-  padding: 0.75rem 0;
+  grid-template-columns: auto 68px minmax(0, 1fr);
+  gap: 0.65rem;
+  padding: 0.8rem 0;
   border-bottom: 1px solid var(--line-divider);
   align-items: start;
 }
@@ -167,20 +228,28 @@ onMounted(async () => {
 }
 
 .cart-item__image {
-  width: 64px;
-  height: 64px;
-  border-radius: var(--card-radius);
-  background: var(--muted-soft);
+  position: relative;
+  width: 68px;
+  height: 68px;
   overflow: hidden;
-  display: flex;
-  align-items: center;
-  justify-content: center;
+  display: grid;
+  place-items: center;
+  background: var(--muted-soft);
+  border-radius: 14px;
 }
 
 .cart-item__image img {
   width: 100%;
   height: 100%;
   object-fit: cover;
+}
+
+.cart-item__placeholder {
+  display: grid;
+  place-items: center;
+  width: 100%;
+  height: 100%;
+  color: var(--muted);
 }
 
 .cart-item__body {
@@ -191,26 +260,91 @@ onMounted(async () => {
 }
 
 .cart-item__name {
-  font-weight: var(--font-weight-medium);
+  overflow: hidden;
   color: var(--deep-text);
+  font-weight: var(--font-weight-semibold);
+  white-space: nowrap;
+  text-overflow: ellipsis;
 }
 
 .cart-item__opt {
-  font-size: 0.75rem;
+  display: inline-block;
+  align-self: flex-start;
+  max-width: 100%;
+  overflow: hidden;
+  padding: 0.12rem 0.45rem;
+  color: var(--content-meta);
+  background: var(--btn-regular-bg);
+  border-radius: 5px;
+  font-size: 0.64rem;
+  white-space: nowrap;
+  text-overflow: ellipsis;
 }
 
 .cart-item__row {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  margin-top: 0.2rem;
+  gap: 0.5rem;
+  margin-top: 0.15rem;
 }
 
-.cart-summary {
-  margin: 0.75rem;
-  padding: 0.75rem 0.9rem;
+.cart-group__gap {
   display: flex;
-  flex-direction: column;
-  gap: 0.6rem;
+  align-items: center;
+  gap: 0.3rem;
+  margin-top: 0.6rem;
+  padding: 0.45rem 0.6rem;
+  color: #9b6a2a;
+  background: var(--warn-soft);
+  border-radius: 10px;
+  font-size: 0.74rem;
+}
+
+.cart-tip {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.3rem;
+  padding: 0.4rem 0 1rem;
+  color: var(--content-meta);
+  font-size: 0.7rem;
+}
+
+.cart-bar {
+  position: fixed;
+  left: 50%;
+  transform: translateX(-50%);
+  bottom: calc(62px + env(safe-area-inset-bottom));
+  width: 100%;
+  max-width: var(--app-max);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  padding: 0.7rem 1rem;
+  background: var(--float-panel-bg);
+  border-top: 1px solid var(--line-divider);
+  box-shadow: 0 -8px 28px rgba(36, 48, 38, 0.07);
+  z-index: 18;
+}
+
+.cart-bar__left {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  min-width: 0;
+}
+
+.cart-bar__label {
+  color: var(--content-meta);
+  font-size: 0.75rem;
+}
+
+.cart-bar .van-button {
+  flex: none;
+  min-width: 8.5rem;
+  min-height: 44px;
+  padding: 0 1.2rem;
 }
 </style>

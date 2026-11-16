@@ -15,6 +15,8 @@ set "DB_NAME=smartorder"
 set "DB_HOST=127.0.0.1"
 set "DB_USER=root"
 set "APP_PORT=8080"
+set "WEB_PORT=5174"
+set "OPEN_WEB=1"
 set "MAVEN_OPTS=-Duser.language=en -Duser.country=US"
 
 set "MODE=%~1"
@@ -94,18 +96,83 @@ goto :bye_ok
 call :prepare_db
 if errorlevel 1 goto :bye_fail
 echo.
-echo Starting the backend. First run downloads dependencies and needs network.
-echo Ctrl+C stops the app only, mysqld keeps running.
+echo Starting backend, then the web dev server, then the browser.
+echo Close this window or press a key to stop both (mysqld keeps running).
 echo health    http://localhost:%APP_PORT%/api/v1/system/health
-echo stats     http://localhost:%APP_PORT%/api/v1/system/stats
+echo web       http://127.0.0.1:%WEB_PORT%
 echo.
+
+rem --- start backend in a separate minimized window ---
 if defined RUN_ARGS (
-  call "%MVN%" -B -f "%SERVER_POM%" spring-boot:run "%RUN_ARGS%"
+  start "SmartOrder-Backend" /MIN cmd /c call "%MVN%" -B -f "%SERVER_POM%" spring-boot:run %RUN_ARGS%
 ) else (
-  call "%MVN%" -B -f "%SERVER_POM%" spring-boot:run
+  start "SmartOrder-Backend" /MIN cmd /c call "%MVN%" -B -f "%SERVER_POM%" spring-boot:run
 )
-if errorlevel 1 goto :bye_fail
+
+echo backend   waiting for port %APP_PORT% ...
+set "WAIT=0"
+:wait_backend
+ping -n 2 127.0.0.1 >nul
+call :port_listening %APP_PORT%
+if "%PORT_UP%"=="1" goto :backend_up
+set /a WAIT+=1
+if %WAIT% LSS 60 goto :wait_backend
+echo backend   did not answer on %APP_PORT% within 120s, see the backend window
+goto :start_web
+
+:backend_up
+echo backend   listening on %APP_PORT%
+
+:start_web
+if not "%OPEN_WEB%"=="1" goto :done_start
+if not exist "%ROOT%\apps\web\package.json" goto :done_start
+
+rem --- start web dev server unless something already listens on WEB_PORT ---
+call :port_listening %WEB_PORT%
+if "%PORT_UP%"=="1" goto :open_web
+echo web       starting vite dev server on %WEB_PORT% ...
+start "SmartOrder-Web" /MIN cmd /c "cd /d %ROOT% && pnpm dev:web"
+set /a WAIT=0
+:wait_web
+ping -n 2 127.0.0.1 >nul
+call :port_listening %WEB_PORT%
+if "%PORT_UP%"=="1" goto :open_web
+set /a WAIT+=1
+if %WAIT% LSS 45 goto :wait_web
+echo web       dev server did not answer on %WEB_PORT%, open it manually
+
+:open_web
+echo web       opening http://127.0.0.1:%WEB_PORT% in the browser
+start "" "http://127.0.0.1:%WEB_PORT%"
+
+:done_start
+echo.
+echo SmartOrder is up. Backend http://localhost:%APP_PORT%  Web http://127.0.0.1:%WEB_PORT%
+echo.
+echo Press any key to stop the backend and web windows...
+pause >nul
+call :stop_started
 goto :bye_ok
+
+:port_listening
+set "PORT_UP=0"
+netstat -ano | findstr /R "LISTENING" | findstr ":%~1 " >nul 2>&1
+if not errorlevel 1 set "PORT_UP=1"
+exit /b 0
+
+:stop_started
+call :kill_port %APP_PORT%
+call :kill_port %WEB_PORT%
+exit /b 0
+
+:kill_port
+set "KILL_PID="
+for /f "tokens=5" %%P in ('netstat -ano ^| findstr /R "LISTENING" ^| findstr ":%~1 "') do if not defined KILL_PID set "KILL_PID=%%P"
+if defined KILL_PID (
+  echo stopping pid %KILL_PID^ on port %~1
+  taskkill /t /f /pid %KILL_PID% >nul 2>&1
+)
+exit /b 0
 
 :resolve_java
 if defined JAVA_HOME if exist "%JAVA_HOME%\bin\java.exe" goto :java_check
@@ -388,7 +455,8 @@ exit /b 0
 :usage
 echo SmartOrder bootstrap and launcher.
 echo.
-echo   start.bat            prepare toolchain, database and data, then run the backend
+echo   start.bat            prepare toolchain, database and data, run the backend,
+echo                        start the web dev server and open it in the browser
 echo   start.bat db         only bring the database up and make sure it is populated
 echo   start.bat reset      drop every table, re-import schema.sql and seed.sql
 echo   start.bat check      static check, flyway diff and the real MySQL test suite
@@ -401,7 +469,10 @@ echo then PATH for Maven; .tools\mysql-* then PATH for MySQL.
 echo .tools is gitignored, so a fresh clone needs the portable Maven and MySQL
 echo placed there by hand, see the two download hints above.
 echo.
-echo Environment overrides: DB_PORT, DB_USER, DB_PASS, SO_DB_URL.
+echo start opens apps\web on http://127.0.0.1:5174. Set OPEN_WEB=0 to skip the web
+echo start and the browser, or WEB_PORT to use a different vite port.
+echo.
+echo Environment overrides: DB_PORT, DB_USER, DB_PASS, SO_DB_URL, WEB_PORT, OPEN_WEB.
 goto :eof
 
 :bye_fail
