@@ -1,0 +1,512 @@
+{
+  "context": {
+    "token": "eyJhbGciOiJIUzUxMiJ9.eyJpc3MiOiJzbWFydG9yZGVyIiwic3ViIjoiMSIsInR5cGUiOiJhY2Nlc3MiLCJzdWJqZWN0VHlwZSI6IlVTRVIiLCJpYXQiOjE3OTQ4MzE3NTEsImV4cCI6MTc5NDgzODk1MX0.OSRXnQtmLu1kIjyhQzI4-es1_FrSvVKwxz-FfP18n7qS2CognszbWoCrTucP-jF2q02f10-gN_NmPk2xr1DyGw",
+    "userId": "1",
+    "merchantId": "1",
+    "campusArea": "中心校区",
+    "dish": {
+      "dishId": "1",
+      "merchantId": "1",
+      "categoryId": "1",
+      "name": "鱼香肉丝盖饭",
+      "subtitle": "酸甜下饭,现炒",
+      "imageUrl": "/static/dish/1.jpg",
+      "basePrice": 1500,
+      "packFee": 100,
+      "minBuyCount": 1,
+      "maxBuyPerOrder": 20,
+      "stockMode": 1,
+      "monthSold": 860,
+      "tags": [
+        "招牌",
+        "微辣"
+      ],
+      "recommended": true,
+      "status": 1,
+      "groups": [
+        {
+          "groupId": "3",
+          "name": "加料",
+          "groupType": "TOPPING",
+          "required": false,
+          "minSelect": 0,
+          "maxSelect": 3,
+          "options": [
+            {
+              "optionId": "9",
+              "groupId": "3",
+              "name": "加米饭",
+              "priceDelta": 200,
+              "isDefault": false,
+              "soldOut": false
+            },
+            {
+              "optionId": "8",
+              "groupId": "3",
+              "name": "加肉",
+              "priceDelta": 500,
+              "isDefault": false,
+              "stock": 25,
+              "soldOut": false
+            },
+            {
+              "optionId": "7",
+              "groupId": "3",
+              "name": "加卤蛋",
+              "priceDelta": 200,
+              "isDefault": false,
+              "stock": 60,
+              "soldOut": false
+            }
+          ]
+        },
+        {
+          "groupId": "2",
+          "name": "份量",
+          "groupType": "SPEC",
+          "required": true,
+          "minSelect": 1,
+          "maxSelect": 1,
+          "options": [
+            {
+              "optionId": "6",
+              "groupId": "2",
+              "name": "大份",
+              "priceDelta": 300,
+              "isDefault": false,
+              "stock": 40,
+              "soldOut": false
+            },
+            {
+              "optionId": "5",
+              "groupId": "2",
+              "name": "标准份",
+              "priceDelta": 0,
+              "isDefault": true,
+              "soldOut": false
+            }
+          ]
+        },
+        {
+          "groupId": "1",
+          "name": "辣度",
+          "groupType": "SPEC",
+          "required": true,
+          "minSelect": 1,
+          "maxSelect": 1,
+          "options": [
+            {
+              "optionId": "4",
+              "groupId": "1",
+              "name": "特辣",
+              "priceDelta": 0,
+              "isDefault": false,
+              "soldOut": false
+            },
+            {
+              "optionId": "3",
+              "groupId": "1",
+              "name": "中辣",
+              "priceDelta": 0,
+              "isDefault": false,
+              "soldOut": false
+            },
+            {
+              "optionId": "2",
+              "groupId": "1",
+              "name": "微辣",
+              "priceDelta": 0,
+              "isDefault": true,
+              "soldOut": false
+            },
+            {
+              "optionId": "1",
+              "groupId": "1",
+              "name": "不辣",
+              "priceDelta": 0,
+              "isDefault": false,
+              "soldOut": false
+            }
+          ]
+        }
+      ],
+      "stock": {
+        "dishId": "1",
+        "bizDate": "2026-11-16",
+        "total": 120,
+        "locked": 3,
+        "sold": 41,
+        "remaining": 76,
+        "soldOut": false,
+        "trackStock": true
+      }
+    },
+    "dishId": "1",
+    "groups": [
+      {
+        "groupId": "3",
+        "name": "加料",
+        "groupType": "TOPPING",
+        "required": false,
+        "minSelect": 0,
+        "maxSelect": 3,
+        "options": [
+          {
+            "optionId": "9",
+            "groupId": "3",
+            "name": "加米饭",
+            "priceDelta": 200,
+            "isDefault": false,
+            "soldOut": false
+          },
+          {
+            "optionId": "8",
+            "groupId": "3",
+            "name": "加肉",
+            "priceDelta": 500,
+            "isDefault": false,
+            "stock": 25,
+            "soldOut": false
+          },
+          {
+            "optionId": "7",
+            "groupId": "3",
+            "name": "加卤蛋",
+            "priceDelta": 200,
+            "isDefault": false,
+            "stock": 60,
+            "soldOut": false
+          }
+        ]
+      },
+      {
+        "groupId": "2",
+        "name": "份量",
+        "groupType": "SPEC",
+        "required": true,
+        "minSelect": 1,
+        "maxSelect": 1,
+        "options": [
+          {
+            "optionId": "6",
+            "groupId": "2",
+            "name": "大份",
+            "priceDelta": 300,
+            "isDefault": false,
+            "stock": 40,
+            "soldOut": false
+          },
+          {
+            "optionId": "5",
+            "groupId": "2",
+            "name": "标准份",
+            "priceDelta": 0,
+            "isDefault": true,
+            "soldOut": false
+          }
+        ]
+      },
+      {
+        "groupId": "1",
+        "name": "辣度",
+        "groupType": "SPEC",
+        "required": true,
+        "minSelect": 1,
+        "maxSelect": 1,
+        "options": [
+          {
+            "optionId": "4",
+            "groupId": "1",
+            "name": "特辣",
+            "priceDelta": 0,
+            "isDefault": false,
+            "soldOut": false
+          },
+          {
+            "optionId": "3",
+            "groupId": "1",
+            "name": "中辣",
+            "priceDelta": 0,
+            "isDefault": false,
+            "soldOut": false
+          },
+          {
+            "optionId": "2",
+            "groupId": "1",
+            "name": "微辣",
+            "priceDelta": 0,
+            "isDefault": true,
+            "soldOut": false
+          },
+          {
+            "optionId": "1",
+            "groupId": "1",
+            "name": "不辣",
+            "priceDelta": 0,
+            "isDefault": false,
+            "soldOut": false
+          }
+        ]
+      }
+    ],
+    "cartItemId": "4",
+    "couponId": "1",
+    "addressId": "1",
+    "payAmount": 3300,
+    "idem": "e2e-1794831751270",
+    "orderNo": "2026111600010006",
+    "paymentNo": "P2026111600010006",
+    "favoriteCount": 3,
+    "messageId": "2"
+  },
+  "results": [
+    {
+      "name": "登录（学号+密码）",
+      "method": "POST",
+      "pathname": "/auth/password/login",
+      "ok": true,
+      "code": 0,
+      "detail": "user=1 doge"
+    },
+    {
+      "name": "当前用户资料",
+      "method": "GET",
+      "pathname": "/auth/profile",
+      "ok": true,
+      "code": 0,
+      "detail": "studentNo=2022010101"
+    },
+    {
+      "name": "档口列表",
+      "method": "GET",
+      "pathname": "/merchants",
+      "ok": true,
+      "code": 0,
+      "detail": "3 个，选用 川香盖浇饭#1"
+    },
+    {
+      "name": "开放档口列表",
+      "method": "GET",
+      "pathname": "/merchants?campusArea=%E4%B8%AD%E5%BF%83%E6%A0%A1%E5%8C%BA&openOnly=true",
+      "ok": true,
+      "code": 0,
+      "detail": "open=1"
+    },
+    {
+      "name": "菜单",
+      "method": "GET",
+      "pathname": "/merchants/1/menu",
+      "ok": true,
+      "code": 0,
+      "detail": "3 类 / 5 菜，选用 鱼香肉丝盖饭#1"
+    },
+    {
+      "name": "菜品详情",
+      "method": "GET",
+      "pathname": "/dishes/1",
+      "ok": true,
+      "code": 0,
+      "detail": "detail=鱼香肉丝盖饭"
+    },
+    {
+      "name": "搜索",
+      "method": "GET",
+      "pathname": "/search?keyword=%E9%A5%AD",
+      "ok": true,
+      "code": 0,
+      "detail": "hits=4"
+    },
+    {
+      "name": "自提点",
+      "method": "GET",
+      "pathname": "/pickup-points",
+      "ok": true,
+      "code": 0,
+      "detail": "points=3"
+    },
+    {
+      "name": "商家评价",
+      "method": "GET",
+      "pathname": "/merchants/1/reviews",
+      "ok": true,
+      "code": 0,
+      "detail": "reviews=0"
+    },
+    {
+      "name": "清空购物车",
+      "method": "DELETE",
+      "pathname": "/cart?merchantId=1",
+      "ok": true,
+      "code": 0,
+      "detail": ""
+    },
+    {
+      "name": "加入购物车",
+      "method": "POST",
+      "pathname": "/cart/items",
+      "ok": true,
+      "code": 0,
+      "detail": "cartItemId=4 total=1800"
+    },
+    {
+      "name": "购物车改数量",
+      "method": "PATCH",
+      "pathname": "/cart/items/4",
+      "ok": true,
+      "code": 0,
+      "detail": "total=3600"
+    },
+    {
+      "name": "优惠券列表",
+      "method": "GET",
+      "pathname": "/coupons",
+      "ok": true,
+      "code": 0,
+      "detail": "4 张，选用 1 (CASH)"
+    },
+    {
+      "name": "收货地址",
+      "method": "GET",
+      "pathname": "/addresses",
+      "ok": true,
+      "code": 0,
+      "detail": "addr=2"
+    },
+    {
+      "name": "下单预检",
+      "method": "POST",
+      "pathname": "/orders/preflight",
+      "ok": true,
+      "code": 0,
+      "detail": "pay=3300 gap=0 fulfill=true coupon=1"
+    },
+    {
+      "name": "创建订单",
+      "method": "POST",
+      "pathname": "/orders",
+      "ok": true,
+      "code": 0,
+      "detail": "orderNo=2026111600010006 pay=3300 expire=2026-11-16T20:37:31.2767148+08:00"
+    },
+    {
+      "name": "幂等重放",
+      "method": "POST",
+      "pathname": "/orders",
+      "ok": true,
+      "code": 0,
+      "detail": "replay=2026111600010006 same=true"
+    },
+    {
+      "name": "创建支付单",
+      "method": "POST",
+      "pathname": "/payments",
+      "ok": true,
+      "code": 0,
+      "detail": "paymentNo=P2026111600010006 status=PAYING form={\"mock\":\"1\"}"
+    },
+    {
+      "name": "支付确认",
+      "method": "POST",
+      "pathname": "/payments/P2026111600010006/confirm",
+      "ok": true,
+      "code": 0,
+      "detail": "status=SUCCESS paidAt=2026-11-16T20:22:31.3288525+08:00"
+    },
+    {
+      "name": "支付单查询",
+      "method": "GET",
+      "pathname": "/payments/P2026111600010006",
+      "ok": true,
+      "code": 0,
+      "detail": "status=SUCCESS orderNo=2026111600010006"
+    },
+    {
+      "name": "订单详情",
+      "method": "GET",
+      "pathname": "/orders/2026111600010006",
+      "ok": true,
+      "code": 0,
+      "detail": "status=PAID items=1 timeline=undefined->PENDING_PAYMENT,PENDING_PAYMENT->PAID expectTake=2026-11-16T20:34:31.329+08:00"
+    },
+    {
+      "name": "订单列表",
+      "method": "GET",
+      "pathname": "/orders?status=ACTIVE&page=1&pageSize=10",
+      "ok": true,
+      "code": 0,
+      "detail": "total=3 list=3"
+    },
+    {
+      "name": "订单评价查询",
+      "method": "GET",
+      "pathname": "/orders/2026111600010006/review",
+      "ok": true,
+      "code": 0,
+      "detail": "review=null"
+    },
+    {
+      "name": "我的评价",
+      "method": "GET",
+      "pathname": "/reviews",
+      "ok": true,
+      "code": 0,
+      "detail": "mine=1"
+    },
+    {
+      "name": "收藏列表",
+      "method": "GET",
+      "pathname": "/favorites",
+      "ok": true,
+      "code": 0,
+      "detail": "count=3"
+    },
+    {
+      "name": "新增收藏",
+      "method": "POST",
+      "pathname": "/favorites",
+      "ok": true,
+      "code": 0,
+      "detail": "count=4"
+    },
+    {
+      "name": "取消收藏",
+      "method": "DELETE",
+      "pathname": "/favorites?targetType=DISH&targetId=1",
+      "ok": true,
+      "code": 0,
+      "detail": "count=3"
+    },
+    {
+      "name": "通知列表",
+      "method": "GET",
+      "pathname": "/notifications",
+      "ok": true,
+      "code": 0,
+      "detail": "count=2 read=true"
+    },
+    {
+      "name": "通知标记已读",
+      "method": "PATCH",
+      "pathname": "/notifications/2/read",
+      "ok": true,
+      "code": 0,
+      "detail": "count=2"
+    },
+    {
+      "name": "用券列表复校",
+      "method": "GET",
+      "pathname": "/coupons?state=USED",
+      "ok": true,
+      "code": 0,
+      "detail": "used=2"
+    },
+    {
+      "name": "支付后自助取消",
+      "method": "POST",
+      "pathname": "/orders/2026111600010006/cancel",
+      "ok": true,
+      "code": 0,
+      "detail": "status=CANCELLED refund=R2026111600010006/SUCCEEDED/3300"
+    }
+  ]
+}

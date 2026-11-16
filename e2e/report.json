@@ -1,0 +1,51 @@
+{
+  "base": "http://127.0.0.1:8080/api/v1",
+  "results": [
+    {
+      "name": "auth.passwordLogin",
+      "method": "POST",
+      "pathname": "/auth/password/login",
+      "status": 200,
+      "ok": true,
+      "code": 0,
+      "detail": "userId=1 name=doge"
+    },
+    {
+      "name": "auth.profile",
+      "method": "GET",
+      "pathname": "/auth/profile",
+      "status": 200,
+      "ok": true,
+      "code": 0,
+      "detail": "studentNo=2022010101"
+    },
+    {
+      "name": "catalog.merchants",
+      "method": "GET",
+      "pathname": "/merchants?campusArea=%E4%B8%AD%E5%BF%83%E6%A0%A1%E5%8C%BA&openOnly=true",
+      "status": 200,
+      "ok": false,
+      "code": 0,
+      "detail": "empty merchant list"
+    },
+    {
+      "name": "catalog.menu",
+      "method": "GET",
+      "pathname": "/merchants/1/menu",
+      "status": 200,
+      "ok": false,
+      "code": 0,
+      "detail": "menu has no dishes"
+    },
+    {
+      "name": "fatal",
+      "method": "-",
+      "pathname": "-",
+      "status": 0,
+      "ok": false,
+      "code": null,
+      "detail": "Error: no dish to add\n    at main (file:///C:/DesktopFile/Smartorder/.tmp/e2e-h5.mjs:121:25)\n    at process.processTicksAndRejections (node:internal/process/task_queues:104:5)"
+    }
+  ],
+  "created": null
+}

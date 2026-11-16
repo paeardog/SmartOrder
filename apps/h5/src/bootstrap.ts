@@ -28,7 +28,7 @@ export async function bootApi(): Promise<void> {
     },
   });
 
-  if (import.meta.env.DEV && import.meta.env.VITE_USE_MOCK !== "off") {
+  if (import.meta.env.DEV && import.meta.env.VITE_USE_MOCK === "on") {
     const { startMockWorker } = await import("@smartorder/api-client/mock");
     await startMockWorker();
   }

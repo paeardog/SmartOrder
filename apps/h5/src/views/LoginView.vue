@@ -31,43 +31,50 @@
     <div class="login-content">
       <section class="login-card so-card">
         <van-field
-          v-model="phone"
-          label="手机号"
-          type="tel"
-          placeholder="请输入手机号"
-          maxlength="11"
+          v-model="studentNo"
+          label="学号"
+          type="digit"
+          placeholder="请输入学号"
+          maxlength="12"
           class="login-field"
         />
         <van-field
-          v-model="code"
-          label="验证码"
-          type="digit"
-          placeholder="请输入验证码"
-          maxlength="6"
+          v-model="password"
+          label="密码"
+          :type="showPassword ? 'text' : 'password'"
+          placeholder="请输入密码"
+          maxlength="32"
           class="login-field"
         >
           <template #button>
-            <button
-              class="login-code"
-              type="button"
-              :disabled="codeSent && cooldown > 0"
-              @click="sendCode"
-            >
-              {{ cooldown > 0 ? `${cooldown}s` : codeSent ? "重新发送" : "获取验证码" }}
+            <button class="login-code" type="button" @click="showPassword = !showPassword">
+              {{ showPassword ? "隐藏" : "显示" }}
             </button>
           </template>
         </van-field>
+        <van-field
+          v-if="mode === 'register'"
+          v-model="nickname"
+          label="昵称"
+          placeholder="选填，默认用学号"
+          maxlength="16"
+          class="login-field"
+        />
 
         <div class="login-actions">
           <van-button type="primary" block round :loading="submitting" :disabled="!canSubmit" @click="submit">
-            登 录
+            {{ mode === "login" ? "登 录" : "注 册" }}
           </van-button>
         </div>
+
+        <button class="login-switch" type="button" @click="toggleMode">
+          {{ mode === "login" ? "还没有账号？用学号注册" : "已有账号？返回登录" }}
+        </button>
       </section>
 
       <div class="login-hint">
         <van-icon name="info-o" />
-        测试环境：任意手机号 + 验证码 888888 即可登录
+        {{ mode === "login" ? "种子账号初始密码为学号后 6 位" : "学号 8-12 位，密码至少 6 位" }}
       </div>
     </div>
   </div>
@@ -83,33 +90,19 @@ import { reportError } from "../utils/report";
 const router = useRouter();
 const route = useRoute();
 
-const phone = ref("");
-const code = ref("");
+const mode = ref<"login" | "register">("login");
+const studentNo = ref("");
+const password = ref("");
+const nickname = ref("");
+const showPassword = ref(false);
 const submitting = ref(false);
-const codeSent = ref(false);
-const cooldown = ref(0);
-let cooldownTimer: number | null = null;
 
-const canSubmit = computed(() => /^1\d{10}$/.test(phone.value) && /^\d{4,6}$/.test(code.value));
+const canSubmit = computed(
+  () => /^\d{8,12}$/.test(studentNo.value) && password.value.length >= 6,
+);
 
-async function sendCode(): Promise<void> {
-  if (cooldown.value > 0) {
-    return;
-  }
-  try {
-    await authApi.smsSend(phone.value);
-    codeSent.value = true;
-    cooldown.value = 60;
-    cooldownTimer = window.setInterval(() => {
-      cooldown.value -= 1;
-      if (cooldown.value <= 0 && cooldownTimer !== null) {
-        window.clearInterval(cooldownTimer);
-        cooldownTimer = null;
-      }
-    }, 1000);
-  } catch (error) {
-    reportError(error);
-  }
+function toggleMode(): void {
+  mode.value = mode.value === "login" ? "register" : "login";
 }
 
 async function submit(): Promise<void> {
@@ -118,7 +111,10 @@ async function submit(): Promise<void> {
   }
   submitting.value = true;
   try {
-    const session = await authApi.smsVerify(phone.value, code.value);
+    const session =
+      mode.value === "login"
+        ? await authApi.passwordLogin(studentNo.value, password.value)
+        : await authApi.register(studentNo.value, password.value, nickname.value.trim() || undefined);
     setTokens(session.accessToken, session.refreshToken);
     setProfile(session.user);
     const next = typeof route.query["next"] === "string" ? route.query["next"] : "/";
@@ -279,6 +275,19 @@ async function submit(): Promise<void> {
 
 .login-actions {
   margin-top: 1.2rem;
+}
+
+.login-switch {
+  display: block;
+  width: 100%;
+  margin-top: 0.85rem;
+  padding: 0.35rem 0;
+  color: var(--primary);
+  background: none;
+  border: 0;
+  font-size: 0.76rem;
+  font-weight: var(--font-weight-medium);
+  text-align: center;
 }
 
 .login-actions :deep(.van-button) {

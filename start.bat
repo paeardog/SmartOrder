@@ -20,7 +20,7 @@ set "DB_HOST=127.0.0.1"
 set "DB_USER=root"
 if not defined APP_PORT set "APP_PORT=8080"
 if not defined WEB_PORT set "WEB_PORT=5174"
-if not defined H5_PORT set "H5_PORT=5175"
+if not defined H5_PORT set "H5_PORT=5173"
 if not defined OPEN_WEB set "OPEN_WEB=1"
 if not defined OPEN_H5 set "OPEN_H5=1"
 if not defined START_WEB set "START_WEB=1"
@@ -40,11 +40,13 @@ set "TAR=%SystemRoot%\System32\tar.exe"
 set "POWERSHELL=%SystemRoot%\System32\WindowsPowerShell\v1.0\powershell.exe"
 set "JDK_URLS=https://aka.ms/download-jdk/microsoft-jdk-17-windows-x64.zip https://api.adoptium.net/v3/binary/latest/17/ga/windows/x64/jdk/hotspot/normal/eclipse"
 set "MVN_PKG=apache-maven-%MVN_VERSION%"
-set "MVN_URLS=https://dlcdn.apache.org/maven/maven-3/%MVN_VERSION%/binaries/%MVN_PKG%-bin.zip https://archive.apache.org/dist/maven/maven-3/%MVN_VERSION%/binaries/%MVN_PKG%-bin.zip"
+rem TUNA Apache mirror first; Apache official archives are the fallback.
+set "MVN_URLS=https://mirrors.tuna.tsinghua.edu.cn/apache/maven/maven-3/%MVN_VERSION%/binaries/%MVN_PKG%-bin.zip https://dlcdn.apache.org/maven/maven-3/%MVN_VERSION%/binaries/%MVN_PKG%-bin.zip https://archive.apache.org/dist/maven/maven-3/%MVN_VERSION%/binaries/%MVN_PKG%-bin.zip"
 set "MYSQL_PKG=mysql-%MYSQL_VERSION%-winx64"
 set "MYSQL_URLS=https://cdn.mysql.com/archives/mysql-8.0/%MYSQL_PKG%.zip https://dev.mysql.com/get/Downloads/MySQL-8.0/%MYSQL_PKG%.zip"
 set "NODE_PKG=node-%NODE_VERSION%-win-x64"
-set "NODE_URLS=https://nodejs.org/dist/%NODE_VERSION%/%NODE_PKG%.zip https://npmmirror.com/mirrors/node/%NODE_VERSION%/%NODE_PKG%.zip"
+rem TUNA Node.js mirror first; official Node.js distribution is the fallback.
+set "NODE_URLS=https://mirrors.tuna.tsinghua.edu.cn/nodejs-release/%NODE_VERSION%/%NODE_PKG%.zip https://nodejs.org/dist/%NODE_VERSION%/%NODE_PKG%.zip https://npmmirror.com/mirrors/node/%NODE_VERSION%/%NODE_PKG%.zip"
 
 set "MODE=%~1"
 if "%MODE%"=="" set "MODE=start"
@@ -157,7 +159,7 @@ if defined SO_DB_URL (
 set "BACKEND_STARTED=1"
 del "%APP_LOG%" >nul 2>&1
 echo backend   mvn spring-boot:run, a first run also downloads the Maven dependencies
-start "SmartOrder-Backend" /MIN cmd /c "call mvn -B -f server\pom.xml spring-boot:run > .tools\backend.log 2>&1"
+start "" /B cmd /c "call mvn -B -f server\pom.xml spring-boot:run > .tools\backend.log 2>&1"
 call :wait_for_port %APP_PORT% %BACKEND_WAIT% "%APP_LOG%"
 if "%WAIT_RESULT%"=="up" goto :backend_up
 call :report_stopped backend "%APP_LOG%" %APP_PORT% %BACKEND_WAIT%
@@ -180,7 +182,7 @@ if "%PORT_UP%"=="1" goto :open_web
 set "WEB_STARTED=1"
 del "%WEB_LOG%" >nul 2>&1
 echo web       vite dev server on %WEB_PORT% ...
-start "SmartOrder-Web" /MIN cmd /c "call pnpm dev:web > .tools\web.log 2>&1"
+start "" /B cmd /c "call pnpm dev:web > .tools\web.log 2>&1"
 call :wait_for_port %WEB_PORT% %WEB_WAIT% "%WEB_LOG%"
 if "%WAIT_RESULT%"=="up" goto :open_web
 call :report_stopped web "%WEB_LOG%" %WEB_PORT% %WEB_WAIT%
@@ -216,7 +218,7 @@ if "%PORT_UP%"=="1" goto :open_h5
 set "H5_STARTED=1"
 del "%H5_LOG%" >nul 2>&1
 echo h5        pnpm dev:h5 on apps\h5, port %H5_PORT% ...
-start "SmartOrder-H5" /MIN cmd /c "call pnpm dev:h5 > .tools\h5.log 2>&1"
+start "" /B cmd /c "call pnpm dev:h5 > .tools\h5.log 2>&1"
 call :wait_for_port %H5_PORT% %H5_WAIT% "%H5_LOG%"
 if "%WAIT_RESULT%"=="up" goto :open_h5
 call :report_stopped h5 "%H5_LOG%" %H5_PORT% %H5_WAIT%
@@ -523,7 +525,7 @@ exit /b 0
 :fetch_to
 set "PART_FILE=%~2.part"
 for %%U in (%~1) do (
-  echo download  %%U
+  echo download  trying %%U
   "%CURL%" -L --fail --retry 2 --retry-delay 3 --connect-timeout 15 -S -o "%PART_FILE%" "%%U"
   if not errorlevel 1 if exist "%PART_FILE%" (
     move /y "%PART_FILE%" "%~2" >nul
@@ -818,7 +820,7 @@ echo start runs apps\web and apps\h5, then opens both in the browser.
 echo Web: pnpm dev:web, H5: pnpm dev:h5.
 echo Set OPEN_WEB=0 or OPEN_H5=0 to keep the respective browser closed;
 echo START_WEB=0 or START_H5=0 skips the respective dev server.
-echo Ports default to WEB_PORT=5174 and H5_PORT=5175.
+echo Ports default to WEB_PORT=5174 and H5_PORT=5173.
 echo Logs: .tools\backend.log, .tools\web.log and .tools\h5.log.
 echo BACKEND_WAIT, WEB_WAIT and H5_WAIT control startup timeouts in seconds.
 echo.
