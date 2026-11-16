@@ -1,9 +1,10 @@
 import { delay, http, HttpResponse, type HttpHandler } from "msw";
 import { ErrorCode } from "../errors";
 import type { Envelope, SearchHit } from "../types";
-import { loadSeed, orderNoAt, payTimeoutMs, unitPriceOf, SEED_TABLE_COUNT, type Ctx, type MockCartItem, type MockData, type MockEntry, type MockOrder, type MockReview } from "./db";
+import { loadSeed, orderNoAt, payTimeoutMs, unitPriceOf, SEED_TABLE_COUNT, type Ctx, type MockAddress, type MockCartItem, type MockData, type MockEntry, type MockOrder, type MockReview } from "./db";
 import {
   accountDto,
+  addressDto,
   auditRowDto,
   cartResponse,
   configDto,
@@ -388,6 +389,87 @@ const DELIVERY_FEE_CENTS = 300;
 
 function deliveryFeeOf(body: Record<string, unknown>): number {
   return String(body["fulfillmentType"] ?? "PICKUP") === "DELIVERY" ? DELIVERY_FEE_CENTS : 0;
+}
+
+const ADDRESS_MAX = 20;
+const ADDRESS_PHONE = /^1[3-9]\d{9}$/;
+
+interface AddressValues {
+  contactName: string;
+  contactPhone: string;
+  campusArea: string;
+  building: string;
+  roomNo: string;
+  tag: string;
+  remark: string;
+}
+
+const ADDRESS_LENGTHS: ReadonlyArray<readonly [keyof AddressValues, number, string]> = [
+  ["contactName", 32, "联系人"],
+  ["campusArea", 64, "校区"],
+  ["building", 64, "楼栋"],
+  ["roomNo", 32, "寝室号"],
+  ["tag", 16, "标签"],
+  ["remark", 255, "备注"],
+];
+
+function liveAddresses(userId: string): MockAddress[] {
+  return data.addresses.filter((row) => row.userId === userId && row.deletedAt === null);
+}
+
+function liveAddress(userId: string, addressId: string): MockAddress | null {
+  return liveAddresses(userId).find((row) => row.id === addressId) ?? null;
+}
+
+function boolOrNull(value: unknown): boolean | null {
+  if (value === undefined || value === null) {
+    return null;
+  }
+  return Boolean(value);
+}
+
+function addressValues(body: Record<string, unknown>): AddressValues | string {
+  const text = (key: keyof AddressValues): string => String(body[key] ?? "").trim();
+  const values: AddressValues = {
+    contactName: text("contactName"),
+    contactPhone: text("contactPhone"),
+    campusArea: text("campusArea"),
+    building: text("building"),
+    roomNo: text("roomNo"),
+    tag: text("tag"),
+    remark: text("remark"),
+  };
+  if (values.contactName === "") {
+    return "请填写联系人";
+  }
+  if (!ADDRESS_PHONE.test(values.contactPhone)) {
+    return "手机号格式不正确";
+  }
+  if (values.campusArea === "") {
+    return "请选择校区";
+  }
+  if (values.building === "") {
+    return "请填写楼栋";
+  }
+  if (values.roomNo === "") {
+    return "请填写寝室号";
+  }
+  for (const entry of ADDRESS_LENGTHS) {
+    if (values[entry[0]].length > entry[1]) {
+      return `${entry[2]}不能超过 ${entry[1]} 个字`;
+    }
+  }
+  return values;
+}
+
+function promoteAddress(userId: string): void {
+  const ordered = [...liveAddresses(userId)].sort((a, b) =>
+    a.updatedAt === b.updatedAt ? Number(b.id) - Number(a.id) : b.updatedAt - a.updatedAt,
+  );
+  const successor = ordered[0];
+  if (successor) {
+    successor.isDefault = true;
+  }
 }
 
 export const handlers: HttpHandler[] = [
@@ -1016,6 +1098,108 @@ export const handlers: HttpHandler[] = [
       (row) => !(row.userId === userId && row.targetType === targetType && row.targetId === targetId),
     );
     return ok(favoriteDto(data, userId));
+  }),
+
+  http.get("*/api/v1/addresses", ({ request }) => ok(addressDto(data, studentId(request)))),
+
+  http.post("*/api/v1/addresses", async ({ request }) => {
+    await delay();
+    const body = await readJson(request);
+    const userId = studentId(request);
+    const live = liveAddresses(userId);
+    if (live.length >= ADDRESS_MAX) {
+      return fail(ErrorCode.INVALID_PARAM, `地址簿最多保存 ${ADDRESS_MAX} 条，请先删除一条再新增`);
+    }
+    const values = addressValues(body);
+    if (typeof values === "string") {
+      return fail(ErrorCode.INVALID_PARAM, values);
+    }
+    const flag = boolOrNull(body["isDefault"]);
+    const asDefault = flag === null ? live.length === 0 : flag;
+    if (asDefault) {
+      for (const row of live) {
+        row.isDefault = false;
+      }
+    }
+    data.addresses.push({
+      id: String(data.addresses.length + 1),
+      userId,
+      contactName: values.contactName,
+      contactPhone: values.contactPhone,
+      campusArea: values.campusArea,
+      building: values.building,
+      roomNo: values.roomNo,
+      tag: values.tag,
+      remark: values.remark,
+      isDefault: asDefault,
+      updatedAt: ctx.now,
+      deletedAt: null,
+    });
+    return ok(addressDto(data, userId));
+  }),
+
+  http.put("*/api/v1/addresses/:addressId", async ({ params, request }) => {
+    await delay();
+    const body = await readJson(request);
+    const userId = studentId(request);
+    const row = liveAddress(userId, String(params["addressId"]));
+    if (!row) {
+      return fail(ErrorCode.RESOURCE_NOT_FOUND, "地址不存在或已删除");
+    }
+    const values = addressValues(body);
+    if (typeof values === "string") {
+      return fail(ErrorCode.INVALID_PARAM, values);
+    }
+    const flag = boolOrNull(body["isDefault"]);
+    if (flag !== null) {
+      if (flag) {
+        for (const other of liveAddresses(userId)) {
+          if (other.id !== row.id) {
+            other.isDefault = false;
+          }
+        }
+      }
+      row.isDefault = flag;
+    }
+    row.contactName = values.contactName;
+    row.contactPhone = values.contactPhone;
+    row.campusArea = values.campusArea;
+    row.building = values.building;
+    row.roomNo = values.roomNo;
+    row.tag = values.tag;
+    row.remark = values.remark;
+    row.updatedAt = ctx.now;
+    return ok(addressDto(data, userId));
+  }),
+
+  http.delete("*/api/v1/addresses/:addressId", ({ params, request }) => {
+    tick();
+    const userId = studentId(request);
+    const row = liveAddress(userId, String(params["addressId"]));
+    if (!row) {
+      return fail(ErrorCode.RESOURCE_NOT_FOUND, "地址不存在或已删除");
+    }
+    const wasDefault = row.isDefault;
+    row.isDefault = false;
+    row.deletedAt = ctx.now;
+    if (wasDefault) {
+      promoteAddress(userId);
+    }
+    return ok(addressDto(data, userId));
+  }),
+
+  http.patch("*/api/v1/addresses/:addressId/default", ({ params, request }) => {
+    tick();
+    const userId = studentId(request);
+    const row = liveAddress(userId, String(params["addressId"]));
+    if (!row) {
+      return fail(ErrorCode.RESOURCE_NOT_FOUND, "地址不存在或已删除");
+    }
+    for (const other of liveAddresses(userId)) {
+      other.isDefault = false;
+    }
+    row.isDefault = true;
+    return ok(addressDto(data, userId));
   }),
 
   http.get("*/api/v1/notifications", ({ request }) => ok(noticeDto(data, studentId(request)))),

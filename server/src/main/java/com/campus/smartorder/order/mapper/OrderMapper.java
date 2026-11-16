@@ -112,6 +112,15 @@ public interface OrderMapper extends BaseMapper<Order> {
                               @Param("version") Integer version,
                               @Param("expectTakeAt") LocalDateTime expectTakeAt);
 
+    @Update("""
+            UPDATE o_order
+               SET expect_take_at = #{expectTakeAt}, pickup_deadline_at = #{pickupDeadlineAt}, version = version + 1
+             WHERE id = #{orderId} AND status = 'PAID'
+            """)
+    int updateTakePlan(@Param("orderId") Long orderId,
+                       @Param("expectTakeAt") LocalDateTime expectTakeAt,
+                       @Param("pickupDeadlineAt") LocalDateTime pickupDeadlineAt);
+
     @Select("""
             SELECT id FROM o_order
              WHERE status = 'PENDING_PAYMENT' AND expire_at < #{now}

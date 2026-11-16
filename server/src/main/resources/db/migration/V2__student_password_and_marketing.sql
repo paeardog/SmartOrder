@@ -5,8 +5,21 @@ ALTER TABLE `u_user`
 
 UPDATE `u_user` SET `student_no` = NULL WHERE `student_no` = '';
 
-ALTER TABLE `u_user` DROP INDEX `idx_u_user_student_no`;
-ALTER TABLE `u_user` ADD UNIQUE KEY `uk_u_user_student_no` (`student_no`);
+-- 结构性改动一律先查 information_schema:新库的结构已由 schema.sql 与 V1 一次建齐,
+-- 这些语句在那种库上必须跳过,否则迁移会撞 1091/1061/1060。
+SET @sql = (SELECT IF(COUNT(*) > 0,
+       'ALTER TABLE `u_user` DROP INDEX `idx_u_user_student_no`',
+       'SELECT 1')
+  FROM information_schema.STATISTICS
+ WHERE table_schema = DATABASE() AND table_name = 'u_user' AND index_name = 'idx_u_user_student_no');
+PREPARE stmt FROM @sql; EXECUTE stmt; DEALLOCATE PREPARE stmt;
+
+SET @sql = (SELECT IF(COUNT(*) = 0,
+       'ALTER TABLE `u_user` ADD UNIQUE KEY `uk_u_user_student_no` (`student_no`)',
+       'SELECT 1')
+  FROM information_schema.STATISTICS
+ WHERE table_schema = DATABASE() AND table_name = 'u_user' AND index_name = 'uk_u_user_student_no');
+PREPARE stmt FROM @sql; EXECUTE stmt; DEALLOCATE PREPARE stmt;
 
 -- 种子学生的初始密码为学号后 6 位,上线前必须全部重置
 UPDATE `u_user`
@@ -19,11 +32,19 @@ UPDATE `u_user`
        `auth_source` = 3
  WHERE `student_no` = '2022010102';
 
-ALTER TABLE `o_order`
-    ADD COLUMN `coupon_id` BIGINT UNSIGNED NULL COMMENT '本单核销的用户券 id,未用券为 NULL' AFTER `discount_amount`;
+SET @sql = (SELECT IF(COUNT(*) = 0,
+       'ALTER TABLE `o_order` ADD COLUMN `coupon_id` BIGINT UNSIGNED NULL COMMENT ''本单核销的用户券 id,未用券为 NULL'' AFTER `discount_amount`',
+       'SELECT 1')
+  FROM information_schema.COLUMNS
+ WHERE table_schema = DATABASE() AND table_name = 'o_order' AND column_name = 'coupon_id');
+PREPARE stmt FROM @sql; EXECUTE stmt; DEALLOCATE PREPARE stmt;
 
-ALTER TABLE `o_review`
-    ADD COLUMN `tags` VARCHAR(255) NOT NULL DEFAULT '' COMMENT '评价标签,逗号分隔' AFTER `content`;
+SET @sql = (SELECT IF(COUNT(*) = 0,
+       'ALTER TABLE `o_review` ADD COLUMN `tags` VARCHAR(255) NOT NULL DEFAULT '''' COMMENT ''评价标签,逗号分隔'' AFTER `content`',
+       'SELECT 1')
+  FROM information_schema.COLUMNS
+ WHERE table_schema = DATABASE() AND table_name = 'o_review' AND column_name = 'tags');
+PREPARE stmt FROM @sql; EXECUTE stmt; DEALLOCATE PREPARE stmt;
 
 CREATE TABLE IF NOT EXISTS `u_address` (
   `id`            BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
@@ -80,7 +101,7 @@ CREATE TABLE IF NOT EXISTS `mk_user_coupon` (
   CONSTRAINT `fk_mk_coupon_template` FOREIGN KEY (`template_id`) REFERENCES `mk_coupon_template` (`id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='用户持有券';
 
-INSERT INTO `mk_coupon_template`
+INSERT IGNORE INTO `mk_coupon_template`
   (`id`, `name`, `subtitle`, `kind`, `threshold_amount`, `discount_amount`, `discount_rate`,
    `max_discount_amount`, `scope_merchant_ids`, `valid_days`, `status`) VALUES
   (1, '全场满 20 减 5', '全部档口可用 · 每单限用一张', 'CASH', 2000, 500, 1000, 500, '', 30, 1),
@@ -88,16 +109,16 @@ INSERT INTO `mk_coupon_template`
   (3, '配送费减免 3 元', '宿舍配送可用', 'SHIPPING', 0, 300, 1000, 300, '', 7, 1),
   (4, '开学季满 30 减 10', '全部档口可用', 'CASH', 3000, 1000, 1000, 1000, '', 60, 1);
 
-INSERT INTO `mk_user_coupon`
-  (`user_id`, `template_id`, `state`, `order_no`, `source`, `start_at`, `end_at`, `used_at`) VALUES
-  (1, 1, 'UNUSED', '', '新人礼包', DATE_SUB(NOW(3), INTERVAL 2 DAY), DATE_ADD(NOW(3), INTERVAL 12 DAY), NULL),
-  (1, 2, 'UNUSED', '', '档口专享', DATE_SUB(NOW(3), INTERVAL 1 DAY), DATE_ADD(NOW(3), INTERVAL 5 DAY), NULL),
-  (1, 3, 'UNUSED', '', '雨天补贴', DATE_SUB(NOW(3), INTERVAL 3 DAY), DATE_ADD(NOW(3), INTERVAL 2 DAY), NULL),
-  (1, 4, 'USED', '2026111000010001', '签到礼包', DATE_SUB(NOW(3), INTERVAL 12 DAY), DATE_SUB(NOW(3), INTERVAL 4 DAY), DATE_SUB(NOW(3), INTERVAL 4 DAY)),
-  (2, 1, 'UNUSED', '', '新人礼包', DATE_SUB(NOW(3), INTERVAL 1 DAY), DATE_ADD(NOW(3), INTERVAL 20 DAY), NULL);
+INSERT IGNORE INTO `mk_user_coupon`
+  (`id`, `user_id`, `template_id`, `state`, `order_no`, `source`, `start_at`, `end_at`, `used_at`) VALUES
+  (1, 1, 1, 'UNUSED', '', '新人礼包', DATE_SUB(NOW(3), INTERVAL 2 DAY), DATE_ADD(NOW(3), INTERVAL 12 DAY), NULL),
+  (2, 1, 2, 'UNUSED', '', '档口专享', DATE_SUB(NOW(3), INTERVAL 1 DAY), DATE_ADD(NOW(3), INTERVAL 5 DAY), NULL),
+  (3, 1, 3, 'UNUSED', '', '雨天补贴', DATE_SUB(NOW(3), INTERVAL 3 DAY), DATE_ADD(NOW(3), INTERVAL 2 DAY), NULL),
+  (4, 1, 4, 'USED', '2026111000010001', '签到礼包', DATE_SUB(NOW(3), INTERVAL 12 DAY), DATE_SUB(NOW(3), INTERVAL 4 DAY), DATE_SUB(NOW(3), INTERVAL 4 DAY)),
+  (5, 2, 1, 'UNUSED', '', '新人礼包', DATE_SUB(NOW(3), INTERVAL 1 DAY), DATE_ADD(NOW(3), INTERVAL 20 DAY), NULL);
 
-INSERT INTO `u_address`
-  (`user_id`, `contact_name`, `contact_phone`, `campus_area`, `building`, `room_no`, `tag`, `remark`, `is_default`) VALUES
-  (1, '张狗蛋', '13800000001', '中心校区', '紫荆公寓 3 栋', '412', '宿舍', '楼下有快递柜,放门口即可', 1),
-  (1, '张狗蛋', '13800000001', '中心校区', '图书馆', '1F 大厅', '其他', '工作日 18 点后无人', 0),
-  (2, '李鹿', '13800000002', '中心校区', '紫荆公寓 5 栋', '208', '宿舍', '', 1);
+INSERT IGNORE INTO `u_address`
+  (`id`, `user_id`, `contact_name`, `contact_phone`, `campus_area`, `building`, `room_no`, `tag`, `remark`, `is_default`) VALUES
+  (1, 1, '张狗蛋', '13800000001', '中心校区', '紫荆公寓 3 栋', '412', '宿舍', '楼下有快递柜,放门口即可', 1),
+  (2, 1, '张狗蛋', '13800000001', '中心校区', '图书馆', '1F 大厅', '其他', '工作日 18 点后无人', 0),
+  (3, 2, '李鹿', '13800000002', '中心校区', '紫荆公寓 5 栋', '208', '宿舍', '', 1);

@@ -29,6 +29,7 @@ public class Order {
     private Integer deliveryFee;
     private Integer discountAmount;
     private Integer payAmount;
+    private Long couponId;
     private String pickupCode;
     private LocalDateTime expectTakeAt;
     private LocalDateTime pickupDeadlineAt;

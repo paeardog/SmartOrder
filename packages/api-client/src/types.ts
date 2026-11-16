@@ -496,6 +496,30 @@ export interface PickupPoint {
   closeTime: string;
 }
 
+export interface AddressItem {
+  addressId: Id;
+  contactName: string;
+  contactPhone: string;
+  campusArea: string;
+  building: string;
+  roomNo: string;
+  tag: string;
+  remark: string;
+  isDefault: boolean;
+  updatedAt: IsoDateTime;
+}
+
+export interface AddressInput {
+  contactName: string;
+  contactPhone: string;
+  campusArea: string;
+  building: string;
+  roomNo: string;
+  tag?: string;
+  remark?: string;
+  isDefault?: boolean;
+}
+
 export interface FavoriteItem {
   favoriteId: Id;
   targetType: "MERCHANT" | "DISH";

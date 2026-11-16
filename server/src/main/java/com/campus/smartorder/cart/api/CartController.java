@@ -2,11 +2,19 @@ package com.campus.smartorder.cart.api;
 
 import com.campus.smartorder.cart.service.CartService;
 import com.campus.smartorder.common.api.ApiResponse;
-import com.campus.smartorder.order.domain.OptionSnapshot;
+import com.campus.smartorder.common.api.Ids;
+import com.campus.smartorder.common.api.Payloads;
 import jakarta.servlet.http.HttpServletRequest;
-import org.springframework.web.bind.annotation.*;
+import org.springframework.web.bind.annotation.DeleteMapping;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PatchMapping;
+import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
+import org.springframework.web.bind.annotation.RestController;
 
-import java.util.List;
 import java.util.Map;
 
 @RestController
@@ -20,50 +28,36 @@ public class CartController {
     }
 
     @GetMapping
-    public ApiResponse<Map<String, Object>> getCart(HttpServletRequest request) {
-        Long userId = (Long) request.getAttribute("userId");
-        Map<String, Object> cart = cartService.getCart(userId);
-        return ApiResponse.ok(cart);
+    public ApiResponse<CartDto.Response> read(HttpServletRequest request) {
+        return ApiResponse.ok(cartService.read(userId(request)));
     }
 
     @PostMapping("/items")
-    public ApiResponse<Map<String, Object>> addToCart(HttpServletRequest request, @RequestBody Map<String, Object> body) {
-        Long userId = (Long) request.getAttribute("userId");
-        Long merchantId = Long.valueOf(body.get("merchantId").toString());
-        Long dishId = Long.valueOf(body.get("dishId").toString());
-        Integer quantity = body.get("quantity") != null ? Integer.valueOf(body.get("quantity").toString()) : 1;
-
-        @SuppressWarnings("unchecked")
-        List<Map<String, Object>> optionsRaw = (List<Map<String, Object>>) body.get("options");
-        List<OptionSnapshot> options = optionsRaw != null ? optionsRaw.stream().map(opt -> {
-            Long groupId = opt.get("groupId") != null ? Long.valueOf(opt.get("groupId").toString()) : 0L;
-            Long optionId = Long.valueOf(opt.get("optionId").toString());
-            String name = opt.get("name").toString();
-            Integer priceDelta = opt.get("priceDelta") != null ? Integer.valueOf(opt.get("priceDelta").toString()) : 0;
-            return new OptionSnapshot(groupId, optionId, name, priceDelta);
-        }).toList() : null;
-
-        Map<String, Object> cart = cartService.addToCart(userId, merchantId, dishId, options, quantity);
-        return ApiResponse.ok(cart);
+    public ApiResponse<CartDto.Response> add(HttpServletRequest request, @RequestBody Map<String, Object> body) {
+        Long merchantId = Payloads.id(body, "merchantId");
+        Long dishId = Payloads.id(body, "dishId");
+        if (dishId == null) {
+            return ApiResponse.ok(cartService.read(userId(request)));
+        }
+        return ApiResponse.ok(cartService.add(userId(request), merchantId, dishId,
+                Payloads.entries(body.get("entries")), Payloads.integer(body, "quantity", 1)));
     }
 
     @PatchMapping("/items/{cartItemId}")
-    public ApiResponse<Map<String, Object>> updateCartItem(HttpServletRequest request,
-                                                            @PathVariable Long cartItemId,
-                                                            @RequestBody Map<String, Object> body) {
-        Long userId = (Long) request.getAttribute("userId");
-        Integer quantity = body.get("quantity") != null ? Integer.valueOf(body.get("quantity").toString()) : null;
-        Integer selected = body.get("selected") != null ? Integer.valueOf(body.get("selected").toString()) : null;
-
-        Map<String, Object> cart = cartService.updateCartItem(userId, cartItemId, quantity, selected);
-        return ApiResponse.ok(cart);
+    public ApiResponse<CartDto.Response> patch(HttpServletRequest request, @PathVariable String cartItemId,
+                                               @RequestBody Map<String, Object> body) {
+        Integer quantity = body.containsKey("quantity") ? Payloads.integer(body, "quantity", 0) : null;
+        Boolean selected = Payloads.bool(body, "selected");
+        return ApiResponse.ok(cartService.patch(userId(request), Ids.parse(cartItemId), quantity, selected));
     }
 
     @DeleteMapping
-    public ApiResponse<Map<String, Object>> clearCart(HttpServletRequest request,
-                                                       @RequestParam(required = false) Long merchantId) {
-        Long userId = (Long) request.getAttribute("userId");
-        Map<String, Object> cart = cartService.clearCart(userId, merchantId);
-        return ApiResponse.ok(cart);
+    public ApiResponse<CartDto.Response> clear(HttpServletRequest request,
+                                               @RequestParam(required = false) String merchantId) {
+        return ApiResponse.ok(cartService.clear(userId(request), Ids.parse(merchantId)));
+    }
+
+    private Long userId(HttpServletRequest request) {
+        return (Long) request.getAttribute("userId");
     }
 }

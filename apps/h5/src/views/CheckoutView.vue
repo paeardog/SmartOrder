@@ -245,12 +245,16 @@
           </button>
         </div>
         <div class="sheet__list">
+          <div v-if="address.loading && address.list.length === 0" class="sheet__empty">
+            <van-skeleton title :row="3" />
+          </div>
+
           <button
             v-for="row in address.sorted"
-            :key="row.id"
+            :key="row.addressId"
             type="button"
-            :class="['addr', { 'addr--on': address.pickedId === row.id, 'addr--off': !deliverable(row) }]"
-            @click="chooseAddress(row.id)"
+            :class="['addr', { 'addr--on': address.pickedId === row.addressId, 'addr--off': !deliverable(row) }]"
+            @click="chooseAddress(row.addressId)"
           >
             <span class="addr__body">
               <span class="addr__line">
@@ -262,11 +266,20 @@
               <span class="addr__full">{{ fullAddressOf(row) }}</span>
               <span v-if="!deliverable(row)" class="addr__why">超出配送范围，仅送 {{ areaText }}</span>
             </span>
-            <span :class="['picker-radio', { 'is-on': address.pickedId === row.id }]">
-              <van-icon v-if="address.pickedId === row.id" name="success" size="12" />
+            <span :class="['picker-radio', { 'is-on': address.pickedId === row.addressId }]">
+              <van-icon v-if="address.pickedId === row.addressId" name="success" size="12" />
             </span>
           </button>
-          <div v-if="address.list.length === 0" class="sheet__empty">
+          <div v-if="address.error !== '' && address.list.length === 0" class="sheet__empty">
+            <EmptyState
+              icon="warning-o"
+              title="地址簿没加载出来"
+              :description="address.error"
+              action-text="重新加载"
+              @action="reloadAddresses"
+            />
+          </div>
+          <div v-else-if="address.list.length === 0" class="sheet__empty">
             <EmptyState icon="location-o" title="还没有收货地址" description="先添加寝室地址，骑手才能找到你。" />
           </div>
         </div>
@@ -457,7 +470,7 @@ function switchMode(next: DineMode): void {
   if (next === "DELIVERY" && address.picked === null) {
     const fit = address.sorted.find((row) => deliverable(row));
     if (fit) {
-      address.pick(fit.id);
+      address.pick(fit.addressId);
       contactName.value = fit.contactName;
       contactPhone.value = fit.contactPhone;
     }
@@ -465,8 +478,13 @@ function switchMode(next: DineMode): void {
   queuePreflight(50);
 }
 
-function chooseAddress(id: string): void {
-  const row = address.list.find((item) => item.id === id);
+async function reloadAddresses(): Promise<void> {
+  await address.refresh();
+  queuePreflight(50);
+}
+
+function chooseAddress(addressId: string): void {
+  const row = address.list.find((item) => item.addressId === addressId);
   if (!row) {
     return;
   }
@@ -474,7 +492,7 @@ function chooseAddress(id: string): void {
     toastText(`该档口只配送${areaText.value}`);
     return;
   }
-  address.pick(id);
+  address.pick(addressId);
   addressOpen.value = false;
   contactName.value = row.contactName;
   contactPhone.value = row.contactPhone;
@@ -628,10 +646,13 @@ onMounted(async () => {
     }
     scanMerchants.value =
       cachePeek<MerchantSummary[]>(`merchants:${campus.area}`) ?? (await catalog.merchants(campus.area));
+    if (!address.loaded) {
+      await address.refresh();
+    }
     if (mode.value === "DELIVERY" && address.picked === null) {
       const fit = address.sorted.find((row) => deliverable(row));
       if (fit) {
-        address.pick(fit.id);
+        address.pick(fit.addressId);
       }
     }
     await couponStore.refresh();

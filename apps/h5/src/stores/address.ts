@@ -1,33 +1,12 @@
-import { computed, ref, watch } from "vue";
+import { computed, ref } from "vue";
+import { addresses as addressesApi, type AddressInput, type AddressItem } from "@smartorder/api-client";
 import { defineStore } from "pinia";
-import { readJson, serverNowMs, writeJson, removeKey } from "@smartorder/shared";
+import { textOf } from "../utils/report";
 
-export interface Address {
-  id: string;
-  contactName: string;
-  contactPhone: string;
-  campusArea: string;
-  building: string;
-  roomNo: string;
-  tag: string;
-  remark: string;
-  isDefault: boolean;
-  updatedAt: number;
-}
+export type Address = AddressItem;
+export type AddressDraft = AddressInput;
 
-export interface AddressDraft {
-  contactName: string;
-  contactPhone: string;
-  campusArea: string;
-  building: string;
-  roomNo: string;
-  tag?: string;
-  remark?: string;
-  isDefault?: boolean;
-}
-
-const STORAGE_KEY = "so.address.book";
-const MAX_ADDRESS = 20;
+export const MAX_ADDRESS = 20;
 
 export const PHONE_PATTERN = /^1[3-9]\d{9}$/;
 
@@ -36,141 +15,135 @@ export function fullAddressOf(address: Address): string {
 }
 
 export function addressError(draft: AddressDraft): string {
-  if (draft.contactName.trim() === "") {
+  if (text(draft.contactName) === "") {
     return "请填写联系人";
   }
-  if (!PHONE_PATTERN.test(draft.contactPhone.trim())) {
+  if (!PHONE_PATTERN.test(text(draft.contactPhone))) {
     return "手机号格式不正确";
   }
-  if (draft.campusArea.trim() === "") {
+  if (text(draft.campusArea) === "") {
     return "请选择校区";
   }
-  if (draft.building.trim() === "") {
+  if (text(draft.building) === "") {
     return "请填写楼栋";
   }
-  if (draft.roomNo.trim() === "") {
+  if (text(draft.roomNo) === "") {
     return "请填写寝室号";
   }
   return "";
 }
 
-function load(): Address[] {
-  const stored = readJson<Address[]>(STORAGE_KEY);
-  if (!Array.isArray(stored)) {
-    return [];
-  }
-  return stored.filter((item) => typeof item === "object" && item !== null && typeof item.id === "string");
+function text(value: string | undefined): string {
+  return (value ?? "").trim();
+}
+
+function payloadOf(draft: AddressDraft): AddressInput {
+  return {
+    contactName: text(draft.contactName),
+    contactPhone: text(draft.contactPhone),
+    campusArea: text(draft.campusArea),
+    building: text(draft.building),
+    roomNo: text(draft.roomNo),
+    tag: text(draft.tag),
+    remark: text(draft.remark),
+    isDefault: draft.isDefault,
+  };
 }
 
 export const useAddressStore = defineStore("address", () => {
-  const list = ref<Address[]>(load());
-  const pickedId = ref<string>(list.value.find((item) => item.isDefault)?.id ?? list.value[0]?.id ?? "");
+  const list = ref<Address[]>([]);
+  const pickedId = ref<string>("");
+  const loading = ref(false);
+  const error = ref("");
+  const loaded = ref(false);
 
-  watch(
-    list,
-    (value) => {
-      if (value.length === 0) {
-        removeKey(STORAGE_KEY);
-        return;
-      }
-      writeJson(STORAGE_KEY, value);
-    },
-    { deep: true },
-  );
+  const sorted = computed<Address[]>(() => list.value);
 
-  const sorted = computed(() =>
-    [...list.value].sort((a, b) => {
-      if (a.isDefault !== b.isDefault) {
-        return a.isDefault ? -1 : 1;
-      }
-      return b.updatedAt - a.updatedAt;
-    }),
-  );
-
-  const picked = computed(() => list.value.find((item) => item.id === pickedId.value) ?? null);
+  const picked = computed(() => list.value.find((item) => item.addressId === pickedId.value) ?? null);
 
   const isFull = computed(() => list.value.length >= MAX_ADDRESS);
 
-  function nextId(): string {
-    return `A${serverNowMs().toString(36)}`;
+  function apply(next: Address[]): void {
+    list.value = next;
+    loaded.value = true;
+    error.value = "";
+    if (!next.some((item) => item.addressId === pickedId.value)) {
+      pickedId.value = next.find((item) => item.isDefault)?.addressId ?? next[0]?.addressId ?? "";
+    }
   }
 
-  function create(draft: AddressDraft): Address | null {
-    if (isFull.value || addressError(draft) !== "") {
+  function failWith(cause: unknown): void {
+    error.value = textOf(cause);
+  }
+
+  async function refresh(): Promise<void> {
+    loading.value = true;
+    try {
+      apply(await addressesApi.list());
+    } catch (cause) {
+      failWith(cause);
+    } finally {
+      loading.value = false;
+    }
+  }
+
+  async function run(task: () => Promise<AddressItem[]>): Promise<boolean> {
+    loading.value = true;
+    try {
+      apply(await task());
+      return true;
+    } catch (cause) {
+      failWith(cause);
+      return false;
+    } finally {
+      loading.value = false;
+    }
+  }
+
+  async function create(draft: AddressDraft): Promise<Address | null> {
+    const message = addressError(draft);
+    if (message !== "") {
+      error.value = message;
       return null;
     }
-    const address: Address = {
-      id: nextId(),
-      contactName: draft.contactName.trim(),
-      contactPhone: draft.contactPhone.trim(),
-      campusArea: draft.campusArea.trim(),
-      building: draft.building.trim(),
-      roomNo: draft.roomNo.trim(),
-      tag: (draft.tag ?? "").trim(),
-      remark: (draft.remark ?? "").trim(),
-      isDefault: draft.isDefault ?? list.value.length === 0,
-      updatedAt: serverNowMs(),
-    };
-    if (address.isDefault) {
-      for (const item of list.value) {
-        item.isDefault = false;
-      }
+    if (isFull.value) {
+      error.value = `地址簿最多保存 ${MAX_ADDRESS} 条，请先删除一条再新增`;
+      return null;
     }
-    list.value = [address, ...list.value];
-    pickedId.value = address.id;
-    return address;
+    const known = new Set(list.value.map((item) => item.addressId));
+    loading.value = true;
+    try {
+      const next = await addressesApi.create(payloadOf(draft));
+      apply(next);
+      return next.find((item) => !known.has(item.addressId)) ?? null;
+    } catch (cause) {
+      failWith(cause);
+      return null;
+    } finally {
+      loading.value = false;
+    }
   }
 
-  function update(id: string, draft: AddressDraft): boolean {
-    const target = list.value.find((item) => item.id === id);
-    if (!target || addressError(draft) !== "") {
+  async function update(addressId: string, draft: AddressDraft): Promise<boolean> {
+    const message = addressError(draft);
+    if (message !== "") {
+      error.value = message;
       return false;
     }
-    target.contactName = draft.contactName.trim();
-    target.contactPhone = draft.contactPhone.trim();
-    target.campusArea = draft.campusArea.trim();
-    target.building = draft.building.trim();
-    target.roomNo = draft.roomNo.trim();
-    target.tag = (draft.tag ?? "").trim();
-    target.remark = (draft.remark ?? "").trim();
-    target.updatedAt = serverNowMs();
-    if (draft.isDefault !== undefined) {
-      target.isDefault = draft.isDefault;
-      if (draft.isDefault) {
-        for (const item of list.value) {
-          if (item.id !== id) {
-            item.isDefault = false;
-          }
-        }
-      }
-    }
-    list.value = [...list.value];
-    return true;
+    return run(() => addressesApi.update(addressId, payloadOf(draft)));
   }
 
-  function remove(id: string): void {
-    list.value = list.value.filter((item) => item.id !== id);
-    if (pickedId.value === id) {
-      pickedId.value = list.value.find((item) => item.isDefault)?.id ?? list.value[0]?.id ?? "";
-    }
-    if (list.value.length > 0 && !list.value.some((item) => item.isDefault)) {
-      const first = list.value[0];
-      if (first) {
-        first.isDefault = true;
-      }
-    }
+  async function remove(addressId: string): Promise<boolean> {
+    return run(() => addressesApi.remove(addressId));
   }
 
-  function setDefault(id: string): void {
-    for (const item of list.value) {
-      item.isDefault = item.id === id;
-    }
-    list.value = [...list.value];
+  async function setDefault(addressId: string): Promise<boolean> {
+    return run(() => addressesApi.setDefault(addressId));
   }
 
-  function pick(id: string): void {
-    if (list.value.some((item) => item.id === id)) {
-      pickedId.value = id;
+  function pick(addressId: string): void {
+    if (list.value.some((item) => item.addressId === addressId)) {
+      pickedId.value = addressId;
     }
   }
 
@@ -187,7 +160,11 @@ export const useAddressStore = defineStore("address", () => {
     sorted,
     picked,
     pickedId,
+    loading,
+    error,
+    loaded,
     isFull,
+    refresh,
     create,
     update,
     remove,

@@ -7,50 +7,63 @@
         <van-icon name="info-o" size="12" /> {{ merchantHint }}
       </p>
 
-      <button
-        v-for="row in address.sorted"
-        :key="row.id"
-        type="button"
-        :class="['addr-card so-card', { 'addr-card--dim': !deliverable(row) }]"
-        @click="choose(row)"
-      >
-        <div class="addr-card__head">
-          <span class="addr-card__name">{{ row.contactName }}</span>
-          <span class="addr-card__phone so-num">{{ row.contactPhone }}</span>
-          <span v-if="row.isDefault" class="addr-card__tag">默认</span>
-          <span v-if="row.tag" class="addr-card__tag addr-card__tag--soft">{{ row.tag }}</span>
-        </div>
-        <div class="addr-card__full">{{ fullAddressOf(row) }}</div>
-        <div v-if="row.remark" class="addr-card__remark">{{ row.remark }}</div>
-        <div v-if="!deliverable(row)" class="addr-card__warn">该档口不配送此校区</div>
-        <div class="addr-card__ops">
-          <button type="button" class="addr-op" @click.stop="edit(row)">
-            <van-icon name="edit" size="13" /> 编辑
-          </button>
-          <button v-if="!row.isDefault" type="button" class="addr-op" @click.stop="address.setDefault(row.id)">
-            <van-icon name="star-o" size="13" /> 设为默认
-          </button>
-          <button type="button" class="addr-op addr-op--del" @click.stop="drop(row)">
-            <van-icon name="delete-o" size="13" /> 删除
-          </button>
-          <van-icon v-if="address.pickedId === row.id" name="success" size="16" class="addr-card__pick" />
-        </div>
-      </button>
+      <van-skeleton v-if="booting" title :row="3" class="addr-skeleton so-card" />
 
       <EmptyState
-        v-if="address.list.length === 0"
-        icon="location-o"
-        title="还没有收货地址"
-        description="添加寝室地址后，外卖配送才能选到它。"
-        action-text="新增地址"
-        @action="create()"
+        v-else-if="address.error !== '' && address.list.length === 0"
+        icon="warning-o"
+        title="地址簿没加载出来"
+        :description="address.error"
+        action-text="重新加载"
+        @action="reload"
       />
 
-      <p v-else-if="address.isFull" class="addr-full">地址簿已满 {{ MAX_LABEL }} 条，删除后再新增。</p>
+      <template v-else>
+        <button
+          v-for="row in address.sorted"
+          :key="row.addressId"
+          type="button"
+          :class="['addr-card so-card', { 'addr-card--dim': !deliverable(row) }]"
+          @click="choose(row)"
+        >
+          <div class="addr-card__head">
+            <span class="addr-card__name">{{ row.contactName }}</span>
+            <span class="addr-card__phone so-num">{{ row.contactPhone }}</span>
+            <span v-if="row.isDefault" class="addr-card__tag">默认</span>
+            <span v-if="row.tag" class="addr-card__tag addr-card__tag--soft">{{ row.tag }}</span>
+          </div>
+          <div class="addr-card__full">{{ fullAddressOf(row) }}</div>
+          <div v-if="row.remark" class="addr-card__remark">{{ row.remark }}</div>
+          <div v-if="!deliverable(row)" class="addr-card__warn">该档口不配送此校区</div>
+          <div class="addr-card__ops">
+            <button type="button" class="addr-op" :disabled="busy" @click.stop="edit(row)">
+              <van-icon name="edit" size="13" /> 编辑
+            </button>
+            <button v-if="!row.isDefault" type="button" class="addr-op" :disabled="busy" @click.stop="makeDefault(row)">
+              <van-icon name="star-o" size="13" /> 设为默认
+            </button>
+            <button type="button" class="addr-op addr-op--del" :disabled="busy" @click.stop="drop(row)">
+              <van-icon name="delete-o" size="13" /> 删除
+            </button>
+            <van-icon v-if="address.pickedId === row.addressId" name="success" size="16" class="addr-card__pick" />
+          </div>
+        </button>
+
+        <EmptyState
+          v-if="address.list.length === 0"
+          icon="location-o"
+          title="还没有收货地址"
+          description="添加寝室地址后，外卖配送才能选到它。"
+          action-text="新增地址"
+          @action="create()"
+        />
+
+        <p v-else-if="address.isFull" class="addr-full">地址簿最多 {{ MAX_ADDRESS }} 条，删除后再新增。</p>
+      </template>
     </div>
 
     <div class="addr-bar">
-      <button type="button" class="addr-bar__btn" :disabled="address.isFull" @click="create()">
+      <button type="button" class="addr-bar__btn" :disabled="address.isFull || booting" @click="create()">
         <van-icon name="plus" size="16" /> 新增收货地址
       </button>
     </div>
@@ -138,10 +151,10 @@ import { showConfirmDialog } from "vant";
 import { catalog, type MenuResponse, type MerchantSummary, type PickupPoint } from "@smartorder/api-client";
 import { cachePeek } from "../utils/cache";
 import EmptyState from "../components/EmptyState.vue";
-import { addressError, fullAddressOf, useAddressStore, type Address, type AddressDraft } from "../stores/address";
+import { MAX_ADDRESS, addressError, fullAddressOf, useAddressStore, type Address, type AddressDraft } from "../stores/address";
 import { useCampusStore } from "../stores/campus";
 import { useCartStore } from "../stores/cart";
-import { toastOk, toastText } from "../utils/report";
+import { toastFail, toastOk, toastText } from "../utils/report";
 
 const router = useRouter();
 const address = useAddressStore();
@@ -149,11 +162,12 @@ const campus = useCampusStore();
 const cart = useCartStore();
 
 const TAGS: readonly string[] = ["寝室", "教学楼", "图书馆", "办公室"];
-const MAX_LABEL = "20";
 
 const open = ref(false);
 const areaOpen = ref(false);
 const saving = ref(false);
+const busy = ref(false);
+const booting = ref(true);
 const error = ref("");
 const editingId = ref("");
 const areaOptions = ref<string[]>([]);
@@ -209,7 +223,7 @@ function create(): void {
 }
 
 function edit(row: Address): void {
-  editingId.value = row.id;
+  editingId.value = row.addressId;
   draft.contactName = row.contactName;
   draft.contactPhone = row.contactPhone;
   draft.campusArea = row.campusArea;
@@ -233,8 +247,31 @@ async function drop(row: Address): Promise<void> {
   } catch {
     return;
   }
-  address.remove(row.id);
-  toastOk("已删除");
+  busy.value = true;
+  const done = await address.remove(row.addressId);
+  busy.value = false;
+  if (done) {
+    toastOk("已删除");
+  } else {
+    toastFail(address.error);
+  }
+}
+
+async function makeDefault(row: Address): Promise<void> {
+  busy.value = true;
+  const done = await address.setDefault(row.addressId);
+  busy.value = false;
+  if (done) {
+    toastOk("已设为默认地址");
+  } else {
+    toastFail(address.error);
+  }
+}
+
+async function reload(): Promise<void> {
+  booting.value = true;
+  await address.refresh();
+  booting.value = false;
 }
 
 function onAreaConfirm({ selectedOptions }: { selectedOptions: { text: string; value: string }[] }): void {
@@ -242,7 +279,7 @@ function onAreaConfirm({ selectedOptions }: { selectedOptions: { text: string; v
   areaOpen.value = false;
 }
 
-function save(): void {
+async function save(): Promise<void> {
   const message = addressError(draft);
   if (message !== "") {
     error.value = message;
@@ -260,18 +297,20 @@ function save(): void {
     isDefault: draft.isDefault,
   };
   if (editingId.value === "") {
-    const created = address.create(next);
-    if (created === null) {
-      error.value = "地址数量已达上限，请先删除一条";
+    const created = await address.create(next);
+    if (created === null && address.error !== "") {
+      error.value = address.error;
       saving.value = false;
       return;
     }
     toastOk("地址已保存");
-  } else if (!address.update(editingId.value, next)) {
-    error.value = "保存失败，请检查填写内容";
-    saving.value = false;
-    return;
   } else {
+    const done = await address.update(editingId.value, next);
+    if (!done) {
+      error.value = address.error;
+      saving.value = false;
+      return;
+    }
     toastOk("地址已更新");
   }
   saving.value = false;
@@ -283,11 +322,11 @@ function choose(row: Address): void {
     toastText(`该档口只配送${merchant.value?.campusArea ?? "对应校区"}`);
     return;
   }
-  address.pick(row.id);
+  address.pick(row.addressId);
   router.back();
 }
 
-onMounted(async () => {
+async function loadAreaOptions(): Promise<void> {
   const points = await catalog.pickupPoints().catch(() => [] as PickupPoint[]);
   const fromPoints = points.map((point) => point.campusArea);
   const merchants =
@@ -296,6 +335,10 @@ onMounted(async () => {
   areaOptions.value = Array.from(
     new Set([...fromPoints, ...merchants.map((row) => row.campusArea)].filter((text) => text !== "")),
   );
+}
+
+onMounted(() => {
+  void Promise.all([reload(), loadAreaOptions()]);
 });
 </script>
 
@@ -330,6 +373,11 @@ onMounted(async () => {
 
 .addr-card--dim {
   opacity: 0.62;
+}
+
+.addr-skeleton {
+  padding: 1rem;
+  margin-bottom: 0.7rem;
 }
 
 .addr-card__head {

@@ -1,6 +1,8 @@
 import { del, get, patch, post, put } from "./http";
 import type {
   AddCartItemRequest,
+  AddressInput,
+  AddressItem,
   AuditRefundRequest,
   CartResponse,
   CasRedirect,
@@ -69,6 +71,9 @@ export const auth = {
   casCallback: (body: LoginTicket) => post<Session>("/auth/cas/callback", body),
   smsSend: (phone: string) => post<{ expireSeconds: number }>("/auth/sms/send", { phone }),
   smsVerify: (phone: string, code: string) => post<Session>("/auth/sms/verify", { phone, code }),
+  passwordLogin: (studentNo: string, password: string) => post<Session>("/auth/password/login", { studentNo, password }),
+  register: (studentNo: string, password: string, nickname?: string) =>
+    post<Session>("/auth/register", { studentNo, password, nickname }),
   refresh: (refreshToken: string) => post<TokenPair>("/auth/refresh", { refreshToken }),
   logout: (refreshToken: string) => post<null>("/auth/logout", { refreshToken }),
   profile: () => get<UserProfile>("/auth/profile"),
@@ -123,6 +128,14 @@ export const favorites = {
   add: (targetType: "MERCHANT" | "DISH", targetId: string) => post<FavoriteItem[]>("/favorites", { targetType, targetId }),
   remove: (targetType: "MERCHANT" | "DISH", targetId: string) =>
     del<FavoriteItem[]>("/favorites", { targetType, targetId }),
+};
+
+export const addresses = {
+  list: () => get<AddressItem[]>("/addresses"),
+  create: (body: AddressInput) => post<AddressItem[]>("/addresses", body),
+  update: (addressId: string, body: AddressInput) => put<AddressItem[]>(`/addresses/${addressId}`, body),
+  remove: (addressId: string) => del<AddressItem[]>(`/addresses/${addressId}`),
+  setDefault: (addressId: string) => patch<AddressItem[]>(`/addresses/${addressId}/default`),
 };
 
 export const notices = {

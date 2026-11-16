@@ -1,6 +1,6 @@
 schema    C:\DesktopFile\Smartorder\db\schema.sql
 语句块    70 → 解析成功 66,跳过 4(SET/USE),失败 0
-规模      34 表 / 449 列 / 71 索引(唯一 25) / 23 外键
+规模      34 表 / 450 列 / 71 索引(唯一 25) / 23 外键
 seed      seed.sql → 58 语句块,23 条 INSERT 解析成功,写入 23 张表共 185 行
 
 表清单
@@ -27,7 +27,7 @@ seed      seed.sql → 58 语句块,23 条 INSERT 解析成功,写入 23 张表�
   o_order_item           列 16  索引  2  外键 1  订单明细快照
   o_order_status_log     列 10  索引  2  外键 1  订单状态流转日志
   o_refund               列 17  索引  3  外键 1  退款单
-  o_review               列 15  索引  3  外键 1  订单评价
+  o_review               列 16  索引  3  外键 1  订单评价
   mk_coupon_template     列 13  索引  1  外键 0  优惠券模板
   mk_user_coupon         列 11  索引  1  外键 2  用户持有券
   p_payment              列 16  索引  4  外键 1  支付流水

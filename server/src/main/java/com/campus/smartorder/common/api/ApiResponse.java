@@ -1,7 +1,9 @@
 package com.campus.smartorder.common.api;
 
+import com.fasterxml.jackson.annotation.JsonInclude;
 import org.slf4j.MDC;
 
+@JsonInclude(JsonInclude.Include.ALWAYS)
 public record ApiResponse<T>(int code, String message, T data, String traceId) {
 
     private static final String TRACE_KEY = "traceId";

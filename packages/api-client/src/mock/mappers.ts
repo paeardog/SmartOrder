@@ -1,4 +1,5 @@
 import type {
+  AddressItem,
   CartMerchantGroup,
   CartResponse,
   ConfigItem,
@@ -631,6 +632,32 @@ export function favoriteDto(data: MockData, userId: string): FavoriteItem[] {
     }
   }
   return out;
+}
+
+export function addressDto(data: MockData, userId: string): AddressItem[] {
+  return data.addresses
+    .filter((row) => row.userId === userId && row.deletedAt === null)
+    .sort((a, b) => {
+      if (a.isDefault !== b.isDefault) {
+        return a.isDefault ? -1 : 1;
+      }
+      if (a.updatedAt !== b.updatedAt) {
+        return b.updatedAt - a.updatedAt;
+      }
+      return Number(b.id) - Number(a.id);
+    })
+    .map((row) => ({
+      addressId: row.id,
+      contactName: row.contactName,
+      contactPhone: row.contactPhone,
+      campusArea: row.campusArea,
+      building: row.building,
+      roomNo: row.roomNo,
+      tag: row.tag,
+      remark: row.remark,
+      isDefault: row.isDefault,
+      updatedAt: iso(row.updatedAt),
+    }));
 }
 
 export function noticeDto(data: MockData, userId: string): NotifyMessage[] {

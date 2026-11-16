@@ -1,10 +1,15 @@
 package com.campus.smartorder.payment.api;
 
 import com.campus.smartorder.common.api.ApiResponse;
-import com.campus.smartorder.payment.domain.Payment;
+import com.campus.smartorder.common.api.Payloads;
 import com.campus.smartorder.payment.service.PaymentService;
 import jakarta.servlet.http.HttpServletRequest;
-import org.springframework.web.bind.annotation.*;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RestController;
 
 import java.util.Map;
 
@@ -19,24 +24,28 @@ public class PaymentController {
     }
 
     @PostMapping
-    public ApiResponse<Payment> createPayment(HttpServletRequest request, @RequestBody Map<String, Object> body) {
-        Long userId = (Long) request.getAttribute("userId");
-        Long orderId = Long.valueOf(body.get("orderId").toString());
-        String channel = body.get("channel").toString();
-
-        Payment payment = paymentService.createPayment(userId, orderId, channel);
-        return ApiResponse.ok(payment);
+    public ApiResponse<PaymentDto.Created> create(HttpServletRequest request,
+                                                  @RequestBody Map<String, Object> body) {
+        String clientIp = Payloads.text(body, "clientIp");
+        if (clientIp.isEmpty()) {
+            clientIp = request.getRemoteAddr();
+        }
+        PaymentDto.Created created = paymentService.create(userId(request),
+                Payloads.text(body, "orderNo"), Payloads.text(body, "channel"), clientIp);
+        return ApiResponse.ok(created);
     }
 
     @PostMapping("/{paymentNo}/confirm")
-    public ApiResponse<Payment> confirmPayment(@PathVariable String paymentNo) {
-        Payment payment = paymentService.mockPayCallback(paymentNo);
-        return ApiResponse.ok(payment);
+    public ApiResponse<PaymentDto.View> confirm(HttpServletRequest request, @PathVariable String paymentNo) {
+        return ApiResponse.ok(paymentService.confirm(userId(request), paymentNo));
     }
 
     @GetMapping("/{paymentNo}")
-    public ApiResponse<Payment> getPayment(@PathVariable String paymentNo) {
-        Payment payment = paymentService.getPayment(paymentNo);
-        return ApiResponse.ok(payment);
+    public ApiResponse<PaymentDto.View> query(HttpServletRequest request, @PathVariable String paymentNo) {
+        return ApiResponse.ok(paymentService.query(userId(request), paymentNo));
+    }
+
+    private Long userId(HttpServletRequest request) {
+        return (Long) request.getAttribute("userId");
     }
 }

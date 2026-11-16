@@ -271,6 +271,21 @@ export interface MockFavorite {
   targetId: string;
 }
 
+export interface MockAddress {
+  id: string;
+  userId: string;
+  contactName: string;
+  contactPhone: string;
+  campusArea: string;
+  building: string;
+  roomNo: string;
+  tag: string;
+  remark: string;
+  isDefault: boolean;
+  updatedAt: number;
+  deletedAt: number | null;
+}
+
 export interface MockNotice {
   id: string;
   userId: string;
@@ -409,6 +424,7 @@ export interface MockData {
   stocks: Map<string, MockStock>;
   users: MockUser[];
   favorites: MockFavorite[];
+  addresses: MockAddress[];
   cart: MockCartItem[];
   orders: MockOrder[];
   notices: MockNotice[];
@@ -671,6 +687,27 @@ export function loadSeed(ctx: Ctx): MockData {
     targetId: textOf(row, "target_id", ctx),
   }));
 
+  const addressSeed: Array<[string, string, string, string, string, string, string, string, boolean]> = [
+    ["1", "张狗蛋", "13800000001", "中心校区", "紫荆公寓 3 栋", "412", "宿舍", "楼下有快递柜,放门口即可", true],
+    ["1", "张狗蛋", "13800000001", "中心校区", "图书馆", "1F 大厅", "其他", "工作日 18 点后无人", false],
+    ["2", "李鹿", "13800000002", "中心校区", "紫荆公寓 5 栋", "208", "宿舍", "", true],
+  ];
+  const seedUpdatedAt = ctx.now - DAY_MS;
+  const addresses: MockAddress[] = addressSeed.map((row, index) => ({
+    id: String(index + 1),
+    userId: row[0],
+    contactName: row[1],
+    contactPhone: row[2],
+    campusArea: row[3],
+    building: row[4],
+    roomNo: row[5],
+    tag: row[6],
+    remark: row[7],
+    isDefault: row[8],
+    updatedAt: seedUpdatedAt,
+    deletedAt: null,
+  }));
+
   const cart: MockCartItem[] = tableRows("u_cart_item").map((row, index) => ({
     id: String(index + 1),
     userId: textOf(row, "user_id", ctx),
@@ -896,6 +933,7 @@ export function loadSeed(ctx: Ctx): MockData {
     stocks,
     users,
     favorites,
+    addresses,
     cart,
     orders,
     notices,
