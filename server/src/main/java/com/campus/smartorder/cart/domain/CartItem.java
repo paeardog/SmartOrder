@@ -28,7 +28,7 @@ public class CartItem {
     private LocalDateTime createdAt;
     private LocalDateTime updatedAt;
 
-    public boolean isSelected() {
+    public boolean getSelectedAsBoolean() {
         return selected != null && selected == 1;
     }
 }

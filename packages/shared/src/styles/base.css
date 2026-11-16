@@ -1,0 +1,110 @@
+@layer reset {
+  *,
+  *::before,
+  *::after {
+    box-sizing: border-box;
+  }
+
+  html {
+    scroll-behavior: smooth;
+    -webkit-text-size-adjust: 100%;
+  }
+
+  body {
+    margin: 0;
+    background: var(--page-bg);
+    color: var(--deep-text);
+    font-family: var(--font-sans);
+    font-size: 14px;
+    line-height: 1.6;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  @media (min-width: 768px) {
+    body {
+      font-size: 16px;
+    }
+  }
+
+  h1,
+  h2,
+  h3,
+  h4,
+  h5,
+  h6,
+  p,
+  figure,
+  blockquote {
+    margin: 0;
+  }
+
+  a {
+    color: var(--btn-content);
+    text-decoration-color: var(--link-underline);
+    text-underline-offset: 0.2em;
+  }
+
+  a:hover {
+    background-color: var(--link-hover);
+  }
+
+  a:active {
+    background-color: var(--link-active);
+  }
+
+  button,
+  input,
+  select,
+  textarea {
+    font: inherit;
+    color: inherit;
+  }
+
+  img {
+    max-width: 100%;
+    display: block;
+  }
+
+  ::selection {
+    background: var(--selection-bg);
+  }
+
+  :focus-visible {
+    outline: 2px solid var(--primary);
+    outline-offset: 2px;
+  }
+}
+
+.so-card {
+  background: var(--card-bg);
+  border: 1px solid var(--line-divider);
+  border-radius: var(--card-radius);
+}
+
+.so-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  padding: 0.05rem 0.5rem;
+  border-radius: var(--chip-radius);
+  font-size: 0.85em;
+  line-height: 1.6;
+  background: var(--muted-soft);
+  color: var(--content-meta);
+}
+
+.so-num {
+  font-family: var(--font-num);
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.01em;
+}
+
+.so-muted {
+  color: var(--content-meta);
+}
+
+.so-divider {
+  height: 1px;
+  background: var(--line-divider);
+  border: 0;
+}

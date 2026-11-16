@@ -5,6 +5,7 @@
 ## 目录
 
 ```
+start.bat             Windows 一键引导：工具链检查、建库灌数据、启动后端
 db/
   schema.sql          建库脚本，31 张表
   seed.sql            示例数据，23 张表 185 行
@@ -13,8 +14,10 @@ db/
 scripts/
   check-schema.mjs    结构与种子数据静态校验器
   run-db-tests.mjs    对真实 MySQL 跑 db/tests
+  gen-flyway.mjs      由 schema.sql 生成 Flyway 基线
 server/
   pom.xml             Spring Boot 3.2.5 / Java 17 后端
+  src/main/resources/db/migration/V1__baseline.sql
 docs/
   01-架构与技术选型.md
   02-数据模型说明.md
@@ -22,9 +25,32 @@ docs/
   04-订单状态机与并发难点.md
   05-前端方案.md
   06-里程碑与风险.md
+.tools/               便携版 Maven 与 MySQL，gitignore，本机自用
 ```
 
 数据库与设计文档已完成并在真实 MySQL 上验证过。后端与前端按 `docs/03` 与 `docs/05` 的规划推进，`server/` 是当前后端进度。
+
+## 本地启动
+
+Windows 上直接双击或命令行执行 `start.bat`，它按顺序做四件事：确认 JDK 17 以上、定位 Maven 与 MySQL、把库准备好、前台启动后端。
+
+```
+start.bat            备齐一切并启动后端，Ctrl+C 停应用
+start.bat db         只把数据库拉起来并确认有表
+start.bat reset      删表重建、重新灌种子数据
+start.bat check      静态校验、Flyway 一致性比对、真实 MySQL 行为测试
+start.bat build      打成 jar 验证编译链路，不启动服务
+start.bat stop       先收 8080 上的后端，再干净关掉便携版 mysqld
+start.bat help       用法说明
+```
+
+停的方式分两种。应用窗口还在，就在里面按 Ctrl+C，Spring Boot 会走优雅关闭，等手头请求处理完再退出，数据库不受影响，可以再 `start.bat` 重启一次应用。窗口已经关了或者找不到，就 `start.bat stop`，它按端口找到进程先好声好气地请它退，请不动才强制结束，最后用 `mysqladmin shutdown` 关库，数据库靠 InnoDB 自己的崩溃恢复也不会坏，但别把拔窗口当成常规手段。`start.bat stop` 可以重复执行，没有东西在跑就报一句 nothing listening 然后正常退出。
+
+依赖的定位顺序是：JDK 先看 `JAVA_HOME` 再看 `PATH`；Maven 先用 `.tools\apache-maven-*`，没有再用 `PATH` 上的 `mvn`；MySQL 同理，先找 `.tools\mysql-*`。`.tools` 是 gitignore 的，重新克隆后要自己放：解压 `apache-maven-3.9.9-bin.zip` 成 `.tools\apache-maven-3.9.9`，解压 `mysql-8.0.40-winx64.zip` 成 `.tools\mysql-8.0.40-winx64`。找到便携版 MySQL 时脚本会全自动完成 `--initialize-insecure`、生成 `my-3307.ini`、启库、导 `schema.sql` 与 `seed.sql`，库地址 `127.0.0.1:3307`，用户 `root`，空密码，仅限本机开发。
+
+库里已有表时启动不会重复导入，要重建用 `start.bat reset`。首次启动会下载 Maven 依赖，需要联网。应用起来后看 `http://localhost:8080/api/v1/system/health`，它回的是数据库真实状态：会话时区、隔离级别、业务表数与 Flyway 版本。
+
+非 Windows 或已有自己的 MySQL，就手工跑下面两节的命令，效果与 `start.bat` 一致；后端用 `mvn -f server/pom.xml spring-boot:run`，连接参数改 `server/src/main/resources/application-dev.yml`。
 
 ## 建库
 

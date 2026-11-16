@@ -1,0 +1,177 @@
+:root {
+  --app-max: 32rem;
+  --van-primary-color: var(--primary);
+  --van-blue: var(--primary);
+  --van-danger-color: var(--caution);
+  --van-text-color: var(--deep-text);
+  --van-text-color-2: var(--content-meta);
+  --van-text-color-3: var(--meta-divider);
+  --van-background: var(--page-bg);
+  --van-background-2: var(--card-bg);
+  --van-background-3: var(--float-panel-bg);
+  --van-border-color: var(--line-divider);
+  --van-radius-md: var(--card-radius);
+  --van-radius-lg: var(--radius-large);
+  --van-font-size-sm: 13px;
+  --van-field-input-text-color: var(--deep-text);
+  --van-nav-bar-height: 46px;
+  --van-nav-bar-background: var(--card-bg);
+  --van-nav-bar-title-text-color: var(--deep-text);
+  --van-nav-bar-icon-color: var(--btn-content);
+  --van-tab-active-text-color: var(--title-active);
+  --van-tabs-bottom-bar-color: var(--primary);
+  --van-button-primary-background: var(--primary);
+  --van-button-primary-border-color: var(--primary);
+  --van-button-default-background: var(--btn-regular-bg);
+  --van-button-default-border-color: transparent;
+  --van-button-default-color: var(--btn-content);
+  --van-stepper-background: var(--btn-regular-bg);
+  --van-stepper-button-icon-color: var(--btn-content);
+  --van-switch-on-background: var(--primary);
+  --van-popup-background: var(--float-panel-bg);
+  --van-search-content-background: var(--btn-regular-bg);
+  --van-skeleton-paragraph-background: var(--muted-soft);
+  --van-empty-text-color: var(--meta-divider);
+  --van-sticky-z-index: 20;
+}
+
+html {
+  height: 100%;
+}
+
+body {
+  min-height: 100%;
+  overscroll-behavior-y: none;
+}
+
+#app {
+  width: 100%;
+  max-width: var(--app-max);
+  margin: 0 auto;
+  min-height: 100vh;
+  min-height: 100dvh;
+  min-height: var(--vh-100, 100vh);
+  background: var(--page-bg);
+  position: relative;
+}
+
+.van-nav-bar,
+.van-tabbar,
+.checkout-bar {
+  padding-top: env(safe-area-inset-top);
+}
+
+.van-tabbar--fixed {
+  padding-bottom: env(safe-area-inset-bottom);
+  height: calc(50px + env(safe-area-inset-bottom));
+}
+
+.so-bottom-safe {
+  padding-bottom: calc(env(safe-area-inset-bottom) + 0.75rem);
+}
+
+.so-page {
+  padding: 0.75rem 0.75rem calc(58px + env(safe-area-inset-bottom) + 4.25rem);
+}
+
+.so-page--flat {
+  padding-bottom: calc(58px + env(safe-area-inset-bottom) + 0.75rem);
+}
+
+.so-section {
+  margin-bottom: 0.75rem;
+}
+
+.so-section__head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  padding: 0 0.25rem 0.4rem;
+}
+
+.so-section__title {
+  font-size: 1rem;
+  font-weight: var(--font-weight-semibold);
+  color: var(--deep-text);
+}
+
+.so-section__aside {
+  font-size: 0.8rem;
+  color: var(--content-meta);
+}
+
+.so-row {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.so-row--between {
+  justify-content: space-between;
+}
+
+.so-title-lg {
+  font-size: 1.1rem;
+  font-weight: var(--font-weight-bold);
+  letter-spacing: -0.01em;
+}
+
+.so-price {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 0.05rem;
+  color: var(--caution);
+  font-family: var(--font-num);
+  font-variant-numeric: tabular-nums;
+  font-weight: var(--font-weight-semibold);
+}
+
+.so-price__cny {
+  font-size: 0.75em;
+}
+
+.so-price__int {
+  font-size: 1.15em;
+}
+
+.so-price__dec {
+  font-size: 0.85em;
+}
+
+.so-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  flex: none;
+  background: var(--muted);
+}
+
+.so-tone-open {
+  background: var(--ok);
+}
+
+.so-tone-busy {
+  background: var(--warn);
+}
+
+.so-tone-closed {
+  background: var(--muted);
+}
+
+.van-popup.rounded {
+  border-radius: var(--radius-large) var(--radius-large) 0 0;
+}
+
+.so-code {
+  font-family: var(--font-num);
+  font-variant-numeric: tabular-nums;
+  font-size: 3.25rem;
+  font-weight: var(--font-weight-bold);
+  letter-spacing: 0.18em;
+  color: var(--deep-text);
+  line-height: 1.1;
+}
+
+.van-haptics-feedback {
+  transition: transform var(--duration-fast) var(--ease-standard);
+}

@@ -2,15 +2,25 @@
   "name": "smartorder",
   "version": "0.1.0",
   "private": true,
-  "description": "校园点单系统：数据库、约束测试与后端",
+  "description": "校园点单系统：数据库、约束测试、后端与前端",
   "type": "module",
+  "packageManager": "pnpm@10.34.9",
+  "engines": {
+    "node": ">=22.12.0"
+  },
   "scripts": {
     "check": "node scripts/check-schema.mjs db/schema.sql db/seed.sql",
     "gen:flyway": "node scripts/gen-flyway.mjs",
     "check:flyway": "node scripts/gen-flyway.mjs --check",
-    "test:db": "node scripts/run-db-tests.mjs"
+    "test:db": "node scripts/run-db-tests.mjs",
+    "gen:seed-json": "node scripts/gen-seed-json.mjs",
+    "dev:h5": "pnpm --filter @smartorder/h5 dev",
+    "dev:console": "pnpm --filter @smartorder/console dev",
+    "build": "pnpm -r build",
+    "typecheck": "pnpm -r typecheck"
   },
   "devDependencies": {
-    "node-sql-parser": "^5.4.0"
+    "node-sql-parser": "^5.4.0",
+    "typescript": "^5.9.3"
   }
 }
