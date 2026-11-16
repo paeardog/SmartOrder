@@ -43,6 +43,7 @@ export interface MockMerchant {
   name: string;
   categoryCode: string;
   logoUrl: string;
+  bannerUrl: string;
   description: string;
   contactName: string;
   contactPhone: string;
@@ -323,15 +324,38 @@ export interface MockConfig {
 }
 
 export interface MockReview {
+  id: string;
   orderId: string;
+  orderNo: string;
   userId: string;
   merchantId: string;
   ratingScore: number;
   tasteScore: number;
   speedScore: number;
   content: string;
+  tags: string[];
+  images: string[];
   anonymous: boolean;
   replyContent: string;
+  createdAt: number;
+}
+
+export interface MockCoupon {
+  id: string;
+  name: string;
+  subtitle: string;
+  kind: "CASH" | "DISCOUNT" | "SHIPPING";
+  thresholdAmount: number;
+  discountAmount: number;
+  discountRate: number;
+  maxDiscountAmount: number;
+  merchantIds: string[];
+  state: "UNUSED" | "USED" | "EXPIRED";
+  startAt: number;
+  endAt: number;
+  usedAt: number | null;
+  orderNo: string;
+  source: string;
 }
 
 function asEntries(value: Json): MockEntry[] {
@@ -393,6 +417,102 @@ export interface MockData {
   accounts: MockAccount[];
   configs: MockConfig[];
   reviews: MockReview[];
+  coupons: MockCoupon[];
+}
+
+const DAY_MS = 24 * 60 * 60_000;
+
+function buildCoupons(ctx: Ctx, merchants: MockMerchant[]): MockCoupon[] {
+  const first = merchants[0]?.id ?? "1";
+  const second = merchants[1]?.id ?? first;
+  const now = ctx.now;
+  return [
+    {
+      id: "1",
+      name: "全场满 20 减 5",
+      subtitle: "全部档口可用 · 每单限用一张",
+      kind: "CASH",
+      thresholdAmount: 2000,
+      discountAmount: 500,
+      discountRate: 1000,
+      maxDiscountAmount: 500,
+      merchantIds: [],
+      state: "UNUSED",
+      startAt: now - 2 * DAY_MS,
+      endAt: now + 12 * DAY_MS,
+      usedAt: null,
+      orderNo: "",
+      source: "新人礼包",
+    },
+    {
+      id: "2",
+      name: "饮品 8.8 折",
+      subtitle: "仅限饮品档口 · 最高抵 6 元",
+      kind: "DISCOUNT",
+      thresholdAmount: 1000,
+      discountAmount: 0,
+      discountRate: 880,
+      maxDiscountAmount: 600,
+      merchantIds: [second],
+      state: "UNUSED",
+      startAt: now - DAY_MS,
+      endAt: now + 5 * DAY_MS,
+      usedAt: null,
+      orderNo: "",
+      source: "档口专享",
+    },
+    {
+      id: "3",
+      name: "配送费减免 3 元",
+      subtitle: "宿舍配送可用",
+      kind: "SHIPPING",
+      thresholdAmount: 0,
+      discountAmount: 300,
+      discountRate: 1000,
+      maxDiscountAmount: 300,
+      merchantIds: [],
+      state: "UNUSED",
+      startAt: now - 3 * DAY_MS,
+      endAt: now + 2 * DAY_MS,
+      usedAt: null,
+      orderNo: "",
+      source: "雨天补贴",
+    },
+    {
+      id: "4",
+      name: "满 15 减 3",
+      subtitle: "已使用",
+      kind: "CASH",
+      thresholdAmount: 1500,
+      discountAmount: 300,
+      discountRate: 1000,
+      maxDiscountAmount: 300,
+      merchantIds: [first],
+      state: "USED",
+      startAt: now - 12 * DAY_MS,
+      endAt: now - 4 * DAY_MS,
+      usedAt: now - 4 * DAY_MS,
+      orderNo: "",
+      source: "签到礼包",
+    },
+    {
+      id: "5",
+      name: "开学季满 30 减 10",
+      subtitle: "已过期",
+      kind: "CASH",
+      thresholdAmount: 3000,
+      discountAmount: 1000,
+      discountRate: 1000,
+      maxDiscountAmount: 1000,
+      merchantIds: [],
+      state: "EXPIRED",
+      startAt: now - 30 * DAY_MS,
+      endAt: now - 9 * DAY_MS,
+      usedAt: null,
+      orderNo: "",
+      source: "平台活动",
+    },
+  ];
 }
 
 const PAY_TIMEOUT_MS = 15 * 60_000;
@@ -414,6 +534,7 @@ export function loadSeed(ctx: Ctx): MockData {
     name: textOf(row, "name", ctx),
     categoryCode: textOf(row, "category_code", ctx),
     logoUrl: textOf(row, "logo_url", ctx),
+    bannerUrl: textOf(row, "banner_url", ctx),
     description: textOf(row, "description", ctx),
     contactName: textOf(row, "contact_name", ctx),
     contactPhone: textOf(row, "contact_phone", ctx),
@@ -733,17 +854,36 @@ export function loadSeed(ctx: Ctx): MockData {
     isPublic: rowBool(row, "is_public", ctx),
   }));
 
-  const reviews: MockReview[] = tableRows("o_review").map((row) => ({
-    orderId: textOf(row, "order_id", ctx),
-    userId: textOf(row, "user_id", ctx),
-    merchantId: textOf(row, "merchant_id", ctx),
-    ratingScore: rowNumber(row, "rating_score", ctx),
-    tasteScore: rowNumber(row, "taste_score", ctx),
-    speedScore: rowNumber(row, "speed_score", ctx),
-    content: textOf(row, "content", ctx),
-    anonymous: rowBool(row, "is_anonymous", ctx),
-    replyContent: textOf(row, "reply_content", ctx),
-  }));
+  const reviews: MockReview[] = tableRows("o_review").map((row, index) => {
+    const orderId = textOf(row, "order_id", ctx);
+    const images: string[] = [];
+    const rawImages = row["image_json"];
+    if (Array.isArray(rawImages)) {
+      for (const item of rawImages) {
+        if (typeof item === "string") {
+          images.push(item);
+        }
+      }
+    }
+    return {
+      id: textOf(row, "id", ctx) || String(index + 1),
+      orderId,
+      orderNo: orders.find((order) => order.id === orderId)?.orderNo ?? "",
+      userId: textOf(row, "user_id", ctx),
+      merchantId: textOf(row, "merchant_id", ctx),
+      ratingScore: rowNumber(row, "rating_score", ctx),
+      tasteScore: rowNumber(row, "taste_score", ctx),
+      speedScore: rowNumber(row, "speed_score", ctx),
+      content: textOf(row, "content", ctx),
+      tags: textOf(row, "content", ctx).length > 0 ? ["出餐快"] : [],
+      images,
+      anonymous: rowBool(row, "is_anonymous", ctx),
+      replyContent: textOf(row, "reply_content", ctx),
+      createdAt: timeValue(row, "created_at", ctx) ?? ctx.now,
+    };
+  });
+
+  const coupons: MockCoupon[] = buildCoupons(ctx, merchants);
 
   return {
     points,
@@ -764,6 +904,7 @@ export function loadSeed(ctx: Ctx): MockData {
     accounts,
     configs,
     reviews,
+    coupons,
   };
 }
 

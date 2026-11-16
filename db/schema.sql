@@ -80,7 +80,7 @@ CREATE TABLE `u_user` (
   `nickname`        VARCHAR(64)     NOT NULL DEFAULT '' COMMENT '昵称',
   `avatar_url`      VARCHAR(512)    NOT NULL DEFAULT '' COMMENT '头像相对路径',
   `real_name`       VARCHAR(32)     NOT NULL DEFAULT '' COMMENT '真实姓名',
-  `student_no`      VARCHAR(32)     NOT NULL DEFAULT '' COMMENT '学号',
+  `student_no`      VARCHAR(32)     NULL COMMENT '学号,密码登录账号;无学号为 NULL',
   `college`         VARCHAR(64)     NOT NULL DEFAULT '' COMMENT '学院',
   `campus_area`     VARCHAR(64)     NOT NULL DEFAULT '' COMMENT '校区',
   `dorm_building`   VARCHAR(64)     NOT NULL DEFAULT '' COMMENT '宿舍楼',
@@ -95,7 +95,7 @@ CREATE TABLE `u_user` (
   `updated_at`      DATETIME(3)     NOT NULL DEFAULT CURRENT_TIMESTAMP(3) ON UPDATE CURRENT_TIMESTAMP(3),
   PRIMARY KEY (`id`),
   UNIQUE KEY `uk_u_user_phone` (`phone`),
-  KEY `idx_u_user_student_no` (`student_no`),
+  UNIQUE KEY `uk_u_user_student_no` (`student_no`),
   KEY `idx_u_user_verify` (`verify_status`, `created_at`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='学生用户';
 
@@ -193,6 +193,25 @@ CREATE TABLE `u_favorite` (
   UNIQUE KEY `uk_u_favorite` (`user_id`, `target_type`, `target_id`),
   CONSTRAINT `fk_u_favorite_user` FOREIGN KEY (`user_id`) REFERENCES `u_user` (`id`) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='收藏';
+
+CREATE TABLE `u_address` (
+  `id`            BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+  `user_id`       BIGINT UNSIGNED NOT NULL,
+  `contact_name`  VARCHAR(32)     NOT NULL COMMENT '联系人',
+  `contact_phone` VARCHAR(20)     NOT NULL COMMENT '联系电话',
+  `campus_area`   VARCHAR(64)     NOT NULL COMMENT '校区',
+  `building`      VARCHAR(64)     NOT NULL COMMENT '楼栋',
+  `room_no`       VARCHAR(32)     NOT NULL COMMENT '寝室号',
+  `tag`           VARCHAR(16)     NOT NULL DEFAULT '' COMMENT '宿舍/家 等标签',
+  `remark`        VARCHAR(255)    NOT NULL DEFAULT '' COMMENT '门牌补充说明',
+  `is_default`    TINYINT         NOT NULL DEFAULT 0 COMMENT '1 默认地址,每用户至多一条',
+  `deleted_at`    DATETIME(3)     NULL COMMENT '软删除时间',
+  `created_at`    DATETIME(3)     NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+  `updated_at`    DATETIME(3)     NOT NULL DEFAULT CURRENT_TIMESTAMP(3) ON UPDATE CURRENT_TIMESTAMP(3),
+  PRIMARY KEY (`id`),
+  KEY `idx_u_address_user` (`user_id`, `deleted_at`, `is_default`),
+  CONSTRAINT `fk_u_address_user` FOREIGN KEY (`user_id`) REFERENCES `u_user` (`id`) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='收货地址簿';
 
 CREATE TABLE `m_merchant` (
   `id`                  BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
@@ -380,6 +399,7 @@ CREATE TABLE `o_order` (
   `pack_fee`                    INT UNSIGNED    NOT NULL DEFAULT 0 COMMENT '打包费分',
   `delivery_fee`                INT UNSIGNED    NOT NULL DEFAULT 0 COMMENT '配送费分',
   `discount_amount`             INT UNSIGNED    NOT NULL DEFAULT 0 COMMENT '优惠分',
+  `coupon_id`                   BIGINT UNSIGNED NULL COMMENT '本单核销的用户券 id,未用券为 NULL',
   `pay_amount`                  INT UNSIGNED    NOT NULL COMMENT '实付分',
   `pickup_code`                 CHAR(6)         NULL COMMENT '取餐码,未出餐前为 NULL,NULL 不参与唯一约束',
   `expect_take_at`              DATETIME(3)     NULL COMMENT '预计可取时间',
@@ -500,6 +520,42 @@ CREATE TABLE `o_review` (
   KEY `idx_o_review_user` (`user_id`, `created_at`),
   CONSTRAINT `fk_o_review_order` FOREIGN KEY (`order_id`) REFERENCES `o_order` (`id`) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='订单评价';
+
+CREATE TABLE `mk_coupon_template` (
+  `id`                  BIGINT UNSIGNED  NOT NULL AUTO_INCREMENT,
+  `name`                VARCHAR(64)      NOT NULL COMMENT '券名称',
+  `subtitle`            VARCHAR(128)     NOT NULL DEFAULT '' COMMENT '使用范围说明',
+  `kind`                VARCHAR(16)      NOT NULL COMMENT 'CASH 满减 DISCOUNT 折扣 SHIPPING 运费券',
+  `threshold_amount`    INT UNSIGNED     NOT NULL DEFAULT 0 COMMENT '用券门槛分',
+  `discount_amount`     INT UNSIGNED     NOT NULL DEFAULT 0 COMMENT 'CASH/SHIPPING 抵扣分',
+  `discount_rate`       INT UNSIGNED     NOT NULL DEFAULT 1000 COMMENT 'DISCOUNT 千分比实付,880 即 8.8 折',
+  `max_discount_amount` INT UNSIGNED     NOT NULL DEFAULT 0 COMMENT '最高抵扣分,0 表示不设上限',
+  `scope_merchant_ids`  VARCHAR(255)     NOT NULL DEFAULT '' COMMENT '限定档口 id 逗号分隔,空为全场',
+  `valid_days`          INT UNSIGNED     NOT NULL DEFAULT 30 COMMENT '领取后有效天数',
+  `status`              TINYINT          NOT NULL DEFAULT 1 COMMENT '1 上架 0 停用',
+  `created_at`          DATETIME(3)      NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+  `updated_at`          DATETIME(3)      NOT NULL DEFAULT CURRENT_TIMESTAMP(3) ON UPDATE CURRENT_TIMESTAMP(3),
+  PRIMARY KEY (`id`),
+  KEY `idx_mk_template_status` (`status`, `id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='优惠券模板';
+
+CREATE TABLE `mk_user_coupon` (
+  `id`          BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+  `user_id`     BIGINT UNSIGNED NOT NULL,
+  `template_id` BIGINT UNSIGNED NOT NULL,
+  `state`       VARCHAR(16)     NOT NULL DEFAULT 'UNUSED' COMMENT 'UNUSED/USED/EXPIRED',
+  `order_no`    VARCHAR(32)     NOT NULL DEFAULT '' COMMENT '核销订单号',
+  `source`      VARCHAR(32)     NOT NULL DEFAULT '' COMMENT '发放来源',
+  `start_at`    DATETIME(3)     NOT NULL COMMENT '生效时间',
+  `end_at`      DATETIME(3)     NOT NULL COMMENT '失效时间',
+  `used_at`     DATETIME(3)     NULL COMMENT '核销时间',
+  `created_at`  DATETIME(3)     NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+  `updated_at`  DATETIME(3)     NOT NULL DEFAULT CURRENT_TIMESTAMP(3) ON UPDATE CURRENT_TIMESTAMP(3),
+  PRIMARY KEY (`id`),
+  KEY `idx_mk_user_coupon` (`user_id`, `state`, `end_at`),
+  CONSTRAINT `fk_mk_coupon_user` FOREIGN KEY (`user_id`) REFERENCES `u_user` (`id`) ON DELETE CASCADE,
+  CONSTRAINT `fk_mk_coupon_template` FOREIGN KEY (`template_id`) REFERENCES `mk_coupon_template` (`id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='用户持有券';
 
 CREATE TABLE `p_payment` (
   `id`              BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,

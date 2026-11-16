@@ -3,6 +3,7 @@ import type {
   CartResponse,
   ConfigItem,
   ConsoleAccount,
+  Coupon,
   DishDetail,
   DishSummary,
   FavoriteItem,
@@ -23,9 +24,21 @@ import type {
   PreflightLineResult,
   PreflightResult,
   RefundDto,
+  ReviewDto,
   UserProfile,
 } from "../types";
-import type { Ctx, MockCartItem, MockData, MockDish, MockEntry, MockMerchant, MockOptionGroup, MockOrder } from "./db";
+import type {
+  Ctx,
+  MockCartItem,
+  MockCoupon,
+  MockData,
+  MockDish,
+  MockEntry,
+  MockMerchant,
+  MockOptionGroup,
+  MockOrder,
+  MockReview,
+} from "./db";
 import {
   cancelWindowMs,
   merchantOpen,
@@ -44,6 +57,7 @@ export function merchantDto(data: MockData, merchant: MockMerchant, ctx: Ctx): M
     categoryCode: merchant.categoryCode,
     categoryName: categoryName(data, merchant.categoryCode),
     logoUrl: merchant.logoUrl,
+    bannerUrl: merchant.bannerUrl,
     description: merchant.description,
     pickupPointId: merchant.pickupPointId,
     pickupPointName: point?.name ?? "",
@@ -282,6 +296,7 @@ export function preflightResult(
   merchant: MockMerchant,
   lines: ReadonlyArray<{ dishId: string; entries: MockEntry[]; quantity: number }>,
   ctx: Ctx,
+  options: { couponId?: string; deliveryFee?: number } = {},
 ): PreflightResult {
   const result: PreflightLineResult[] = [];
   let itemAmount = 0;
@@ -317,8 +332,11 @@ export function preflightResult(
     });
   }
 
-  const payAmount = itemAmount + packFee;
-  const gap = Math.max(0, merchant.minOrderAmount - payAmount);
+  const goodsAmount = itemAmount + packFee;
+  const deliveryFee = Math.max(0, options.deliveryFee ?? 0);
+  const applied = applyCoupon(data, ctx, merchant.id, goodsAmount, options.couponId ?? "", deliveryFee);
+  const payAmount = Math.max(0, goodsAmount + deliveryFee - applied.discountAmount);
+  const gap = Math.max(0, merchant.minOrderAmount - goodsAmount);
   if (gap > 0 && rejectReason === "") {
     rejectReason = `还差 ${(gap / 100).toFixed(2)} 元起送`;
   }
@@ -329,8 +347,8 @@ export function preflightResult(
     lines: result,
     itemAmount,
     packFee,
-    deliveryFee: 0,
-    discountAmount: 0,
+    deliveryFee,
+    discountAmount: applied.discountAmount,
     payAmount,
     minOrderAmount: merchant.minOrderAmount,
     gapToMinimum: gap,
@@ -338,6 +356,96 @@ export function preflightResult(
     rejectReason,
     serverTime: iso(ctx.now),
     expireAt: iso(ctx.now + payTimeoutMs(data)),
+    couponId: applied.coupon?.id ?? null,
+    couponName: applied.coupon?.name ?? "",
+    couponRejected: applied.reason,
+  };
+}
+
+export function applyCoupon(
+  data: MockData,
+  ctx: Ctx,
+  merchantId: string,
+  goodsAmount: number,
+  couponId: string,
+  deliveryFee = 0,
+): { coupon: MockCoupon | null; discountAmount: number; reason: string } {
+  if (couponId === "") {
+    return { coupon: null, discountAmount: 0, reason: "" };
+  }
+  const coupon = data.coupons.find((row) => row.id === couponId);
+  if (!coupon) {
+    return { coupon: null, discountAmount: 0, reason: "优惠券不存在" };
+  }
+  if (coupon.state !== "UNUSED") {
+    return { coupon: null, discountAmount: 0, reason: "优惠券已不可用" };
+  }
+  if (coupon.startAt > ctx.now || coupon.endAt < ctx.now) {
+    return { coupon: null, discountAmount: 0, reason: "优惠券不在有效期内" };
+  }
+  if (coupon.merchantIds.length > 0 && !coupon.merchantIds.includes(merchantId)) {
+    return { coupon: null, discountAmount: 0, reason: "该优惠券不适用于当前档口" };
+  }
+  if (goodsAmount < coupon.thresholdAmount) {
+    return {
+      coupon: null,
+      discountAmount: 0,
+      reason: `满 ${(coupon.thresholdAmount / 100).toFixed(2)} 元可用`,
+    };
+  }
+  if (coupon.kind === "SHIPPING") {
+    const shippingDiscount = Math.min(coupon.discountAmount, deliveryFee);
+    if (shippingDiscount <= 0) {
+      return { coupon: null, discountAmount: 0, reason: "本单没有配送费可抵扣" };
+    }
+    return { coupon, discountAmount: shippingDiscount, reason: "" };
+  }
+  const raw = coupon.kind === "DISCOUNT" ? Math.round((goodsAmount * (1000 - coupon.discountRate)) / 1000) : coupon.discountAmount;
+  const discount = Math.min(Math.max(0, raw), coupon.maxDiscountAmount || raw, goodsAmount);
+  return { coupon, discountAmount: discount, reason: "" };
+}
+
+export function couponDto(coupon: MockCoupon, ctx: Ctx): Coupon {
+  return {
+    couponId: coupon.id,
+    name: coupon.name,
+    subtitle: coupon.subtitle,
+    kind: coupon.kind,
+    thresholdAmount: coupon.thresholdAmount,
+    discountAmount: coupon.discountAmount,
+    discountRate: coupon.discountRate,
+    maxDiscountAmount: coupon.maxDiscountAmount,
+    merchantIds: [...coupon.merchantIds],
+    state: coupon.endAt < ctx.now && coupon.state === "UNUSED" ? "EXPIRED" : coupon.state,
+    startAt: iso(coupon.startAt),
+    endAt: iso(coupon.endAt),
+    usedAt: coupon.usedAt === null ? null : iso(coupon.usedAt),
+    orderNo: coupon.orderNo,
+    source: coupon.source,
+  };
+}
+
+export function reviewDto(data: MockData, review: MockReview): ReviewDto {
+  const order = data.orders.find((row) => row.id === review.orderId);
+  const user = data.users.find((row) => row.id === review.userId);
+  return {
+    reviewId: review.id,
+    orderNo: review.orderNo || (order?.orderNo ?? ""),
+    merchantId: review.merchantId,
+    merchantName: order?.merchantName ?? data.merchants.find((row) => row.id === review.merchantId)?.name ?? "",
+    userId: review.userId,
+    userName: review.anonymous ? "匿名用户" : (user?.nickname ?? "同学"),
+    userAvatar: user?.avatarUrl ?? "",
+    ratingScore: review.ratingScore,
+    tasteScore: review.tasteScore,
+    speedScore: review.speedScore,
+    tags: [...review.tags],
+    content: review.content,
+    images: [...review.images],
+    anonymous: review.anonymous,
+    dishNames: (order?.items ?? []).map((item) => item.dishName),
+    replyContent: review.replyContent,
+    createdAt: iso(review.createdAt),
   };
 }
 

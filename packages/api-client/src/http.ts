@@ -162,6 +162,10 @@ export function patch<T>(path: string, body?: unknown, options: Partial<RequestO
   return request<T>("PATCH", path, { body, ...options });
 }
 
+export function put<T>(path: string, body?: unknown, options: Partial<RequestOptions> = {}): Promise<T> {
+  return request<T>("PUT", path, { body, ...options });
+}
+
 export function del<T>(path: string, query?: RequestOptions["query"], options: Partial<RequestOptions> = {}): Promise<T> {
   return request<T>("DELETE", path, { query, ...options });
 }

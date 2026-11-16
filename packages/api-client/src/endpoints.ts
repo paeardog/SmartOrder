@@ -1,28 +1,44 @@
-import { del, get, patch, post } from "./http";
+import { del, get, patch, post, put } from "./http";
 import type {
   AddCartItemRequest,
   AuditRefundRequest,
   CartResponse,
   CasRedirect,
+  CategorySaveRequest,
+  CategorySortRequest,
   ConfigItem,
   ConsoleSession,
+  Coupon,
+  CouponState,
   CreateOrderRequest,
   CreateOrderResult,
   CreatePaymentRequest,
   CreatePaymentResult,
   CreateRefundRequest,
+  CreateReviewRequest,
+  DateOverrideSaveRequest,
   DishDailyStat,
   DishDetail,
+  DishSaveRequest,
+  DishStatusUpdateRequest,
   FavoriteItem,
+  Id,
   ListMerchantOrdersParams,
   ListOrdersParams,
   LoginTicket,
   MenuResponse,
   MerchantAuditRow,
   MerchantBoardSummary,
+  MerchantConsoleProfile,
   MerchantDailyStat,
+  MerchantHoursResponse,
+  MerchantHoursSaveRequest,
+  MerchantMenu,
   MerchantOrderRow,
+  MerchantProfileUpdateRequest,
+  MerchantStatOverview,
   MerchantStatusUpdateRequest,
+  MerchantStockResponse,
   MerchantSummary,
   NotifyMessage,
   OrderDetail,
@@ -36,7 +52,10 @@ import type {
   PreflightResult,
   RejectOrderRequest,
   RefundDto,
+  ReviewDto,
+  SearchHit,
   Session,
+  StockUpdateResult,
   StockUpdateRequest,
   SystemHealth,
   SystemStats,
@@ -66,6 +85,7 @@ export const catalog = {
     get<MerchantSummary[]>("/merchants", { campusArea, openOnly }),
   menu: (merchantId: string) => get<MenuResponse>(`/merchants/${merchantId}/menu`),
   dish: (dishId: string) => get<DishDetail>(`/dishes/${dishId}`),
+  search: (keyword: string, campusArea?: string) => get<SearchHit[]>("/search", { keyword, campusArea }),
   pickupPoints: (campusArea?: string) => get<PickupPoint[]>("/pickup-points", { campusArea }),
 };
 
@@ -110,6 +130,17 @@ export const notices = {
   markRead: (messageId: string) => patch<NotifyMessage[]>(`/notifications/${messageId}/read`),
 };
 
+export const coupons = {
+  list: (state?: CouponState) => get<Coupon[]>("/coupons", { state }),
+};
+
+export const reviews = {
+  byMerchant: (merchantId: string) => get<ReviewDto[]>(`/merchants/${merchantId}/reviews`),
+  mine: () => get<ReviewDto[]>("/reviews"),
+  byOrder: (orderNo: string) => get<ReviewDto | null>(`/orders/${orderNo}/review`),
+  create: (body: CreateReviewRequest) => post<ReviewDto>("/reviews", body),
+};
+
 export const merchant = {
   orders: (params: ListMerchantOrdersParams = {}) =>
     get<Page<MerchantOrderRow>>("/merchant/orders", { ...params }),
@@ -119,10 +150,29 @@ export const merchant = {
   ready: (orderNo: string) => post<OrderDetail>(`/merchant/orders/${orderNo}/ready`),
   verify: (orderNo: string, body: VerifyPickupRequest) => post<OrderDetail>(`/merchant/orders/${orderNo}/verify`, body),
   reject: (orderNo: string, body: RejectOrderRequest) => post<OrderDetail>(`/merchant/orders/${orderNo}/reject`, body),
-  stock: (dishId: string, body: StockUpdateRequest) => patch<{ dishId: string; remaining: number }>(`/merchant/dishes/${dishId}/stock`, body),
-  status: (body: MerchantStatusUpdateRequest) => patch<MerchantSummary>("/merchant/status", body),
+  lookup: (pickupCode: string) => get<MerchantOrderRow>("/merchant/pickup", { pickupCode }),
+  stock: (dishId: string, body: StockUpdateRequest) =>
+    patch<StockUpdateResult>(`/merchant/dishes/${dishId}/stock`, body),
+  stockBoard: () => get<MerchantStockResponse>("/merchant/stock"),
+  status: (body: MerchantStatusUpdateRequest) => patch<MerchantConsoleProfile>("/merchant/status", body),
   daily: (days = 14) => get<MerchantDailyStat[]>("/merchant/stats/daily", { days }),
   dishDaily: (bizDate?: string) => get<DishDailyStat[]>("/merchant/stats/dishes", { bizDate }),
+  overview: () => get<MerchantStatOverview>("/merchant/stats/overview"),
+  profile: () => get<MerchantConsoleProfile>("/merchant/profile"),
+  saveProfile: (body: MerchantProfileUpdateRequest) => patch<MerchantConsoleProfile>("/merchant/profile", body),
+  menu: () => get<MerchantMenu>("/merchant/menu"),
+  saveCategory: (body: CategorySaveRequest, categoryId?: string) =>
+    categoryId ? put<MerchantMenu>(`/merchant/categories/${categoryId}`, body) : post<MerchantMenu>("/merchant/categories", body),
+  removeCategory: (categoryId: string) => del<MerchantMenu>(`/merchant/categories/${categoryId}`),
+  sortCategories: (body: CategorySortRequest) => put<MerchantMenu>("/merchant/categories/sort", body),
+  saveDish: (body: DishSaveRequest, dishId?: string) =>
+    dishId ? put<{ dishId: Id }>(`/merchant/dishes/${dishId}`, body) : post<{ dishId: Id }>("/merchant/dishes", body),
+  removeDish: (dishId: string) => del<MerchantMenu>(`/merchant/dishes/${dishId}`),
+  setDishStatus: (body: DishStatusUpdateRequest) => put<MerchantMenu>("/merchant/dishes/status", body),
+  hours: () => get<MerchantHoursResponse>("/merchant/hours"),
+  saveHours: (body: MerchantHoursSaveRequest) => put<MerchantHoursResponse>("/merchant/hours", body),
+  setOverride: (body: DateOverrideSaveRequest) => put<MerchantHoursResponse>("/merchant/hours/override", body),
+  removeOverride: (bizDate: string) => del<MerchantHoursResponse>(`/merchant/hours/override`, { bizDate }),
 };
 
 export const platform = {

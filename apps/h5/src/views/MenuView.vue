@@ -1,488 +1,811 @@
 <template>
   <div class="menu-page">
-    <van-nav-bar left-arrow @click-left="router.back()">
+    <van-nav-bar left-arrow @click-left="onBack">
       <template #title>
         <span class="menu-nav__title">{{ merchant?.name ?? "档口菜单" }}</span>
       </template>
       <template #right>
-        <span v-if="merchant" :class="['menu-nav__status', { 'is-closed': !merchant.open }]">
-          <i />{{ merchant.open ? "营业中" : "休息中" }}
-        </span>
+        <div class="menu-nav__actions">
+          <button
+            type="button"
+            :class="['menu-nav__btn', { 'is-on': filterVisible }]"
+            aria-label="搜索本店菜品"
+            @click="toggleFilter"
+          >
+            <van-icon name="search" size="18" />
+          </button>
+          <button type="button" class="menu-nav__btn" aria-label="刷新菜单" @click="reload">
+            <van-icon :name="pending ? 'ellipsis' : 'replay'" size="18" />
+          </button>
+        </div>
       </template>
     </van-nav-bar>
 
-    <van-skeleton v-if="loading && !merchant" title :row="6" class="menu-skeleton so-card" />
+    <div v-if="pending && !merchant" class="menu-boot">
+      <van-skeleton title :row="3" class="so-card" />
+      <div class="menu-boot__list">
+        <van-skeleton title :row="3" class="so-card" />
+        <van-skeleton title :row="3" class="so-card" />
+        <van-skeleton title :row="3" class="so-card" />
+      </div>
+    </div>
 
-    <template v-else-if="merchant">
+    <EmptyState
+      v-else-if="!merchant"
+      icon="warning-o"
+      title="菜单没加载出来"
+      :description="loadError"
+      action-text="重新加载"
+      @action="reload"
+    />
+
+    <template v-else>
       <header class="menu-hero">
-        <div class="menu-hero__logo">
-          <span>{{ merchant.name.slice(0, 1) }}</span>
-          <img
-            v-if="merchant.logoUrl !== ''"
-            :src="merchant.logoUrl"
-            :alt="merchant.name"
-            @error="hideBrokenImage"
-          />
+        <div class="menu-hero__top">
+          <span class="menu-hero__logo">
+            <ArtImage :src="merchant.logoUrl" :name="merchant.name" radius="15px" :lazy="false" />
+          </span>
+          <div class="menu-hero__body">
+            <div class="menu-hero__name">{{ merchant.name }}</div>
+            <div class="menu-hero__meta">
+              <StatusTag :label="business.label" :tone="business.tone" dot />
+              <span class="menu-hero__rating"><van-icon name="star" />{{ ratingText }}</span>
+              <span>月售 <b class="so-num">{{ soldText(merchant.monthSold) }}</b></span>
+              <span class="menu-hero__category">{{ merchant.categoryName }}</span>
+            </div>
+          </div>
+          <button type="button" class="menu-hero__switch" @click="router.replace({ name: 'home' })">
+            换档口<van-icon name="exchange" size="12" />
+          </button>
         </div>
-        <div class="menu-hero__body">
-          <div class="menu-hero__name">{{ merchant.name }}</div>
-          <div class="menu-hero__meta">
-            <span class="menu-hero__category">{{ merchant.categoryName }}</span>
-            <span class="menu-hero__rating"><van-icon name="star" /> {{ (merchant.ratingScore / 100).toFixed(1) }}</span>
-            <span>月售 <b class="so-num">{{ merchant.monthSold }}</b></span>
-          </div>
-          <div class="menu-hero__sub">
-            <van-icon name="location-o" /> {{ merchant.pickupPointName }} · 约 {{ merchant.avgPrepareMinutes }} 分钟出餐
-          </div>
+
+        <div class="menu-hero__foot">
+          <span class="menu-hero__line"><van-icon name="location-o" /> {{ merchant.pickupPointName }}</span>
+          <span class="menu-hero__line"><van-icon name="clock-o" /> {{ business.hint }}</span>
+          <span v-if="merchant.minOrderAmount > 0" class="menu-hero__line">
+            <van-icon name="gold-coin-o" /> 起送 ¥{{ yuanText(merchant.minOrderAmount) }}
+          </span>
+          <span v-else class="menu-hero__line"><van-icon name="gold-coin-o" /> 无起送门槛</span>
+        </div>
+
+        <div v-if="tableChip !== ''" class="menu-hero__table">
+          <van-icon name="bag-o" size="13" />
+          {{ tableChip }}
+          <button type="button" @click="dining.unbind()">解除</button>
         </div>
       </header>
+
+      <div v-if="!business.saleable" class="menu-alert menu-alert--stop">
+        <van-icon name="info-o" />
+        <span>{{ business.hint }}，可以先看看别家，出餐不排队</span>
+        <button type="button" @click="router.replace({ name: 'home' })">去逛逛</button>
+      </div>
+      <div v-else-if="business.key === 'CLOSING'" class="menu-alert menu-alert--soon">
+        <van-icon name="clock-o" />
+        <span>{{ business.hint }}</span>
+      </div>
+      <div v-if="stale" class="menu-alert menu-alert--cache">
+        <van-icon name="warning-o" />
+        <span>网络不稳定，正在展示上次缓存的菜单与库存</span>
+        <button type="button" @click="reload">重试</button>
+      </div>
+
+      <div v-if="filterVisible" class="menu-filter">
+        <van-icon name="search" size="15" class="menu-filter__icon" />
+        <input
+          ref="filterInput"
+          v-model="filter"
+          class="menu-filter__input"
+          type="search"
+          inputmode="search"
+          placeholder="搜本店菜品，支持拼音首字母"
+          @keydown.esc="clearFilter"
+        />
+        <button v-if="filter !== ''" type="button" class="menu-filter__clear" aria-label="清空" @click="clearFilter">
+          <van-icon name="clear" size="15" />
+        </button>
+      </div>
 
       <div class="menu-body">
         <aside class="menu-cats">
           <button
-            v-for="cat in menu?.categories ?? []"
+            v-for="cat in sections"
             :key="cat.categoryId"
-            :class="['menu-cat', { 'menu-cat--active': cat.categoryId === activeCat }]"
             type="button"
-            @click="activeCat = cat.categoryId"
+            :class="['menu-cat', { 'menu-cat--active': cat.categoryId === displayCat }]"
+            @click="goCategory(cat.categoryId)"
           >
+            <span v-if="cat.categoryId === displayCat" class="menu-cat__bar" />
             <span class="menu-cat__name">{{ cat.name }}</span>
-            <span class="menu-cat__count">{{ cat.dishes.length }}</span>
+            <span v-if="cat.soldOut > 0" class="menu-cat__dot" />
+            <span class="menu-cat__count">{{ cat.count }}</span>
           </button>
-          <div v-if="(menu?.categories ?? []).length === 0" class="menu-cats__empty">暂无分类</div>
+          <div v-if="sections.length === 0" class="menu-cats__empty">无分类</div>
         </aside>
 
-        <section class="menu-dishes">
-          <template v-for="cat in menu?.categories ?? []" :key="cat.categoryId">
-            <div v-if="cat.categoryId === activeCat" class="menu-dish-group">
-              <div class="menu-dish-group__title">
-                {{ cat.name }} <span class="menu-dish-group__count so-num">{{ cat.dishes.length }} 款</span>
+        <section ref="listRef" class="menu-dishes" @scroll.passive="onScroll">
+          <div class="menu-canvas" :style="{ height: `${totalHeight}px` }">
+            <div
+              v-for="row in visibleRows"
+              :key="row.key"
+              :class="['menu-row', `menu-row--${row.kind}`, { 'has-line': row.divider, 'is-flash': row.dish !== null && row.dish.dishId === flashDish }]"
+              :style="{ transform: `translateY(${row.offset}px)`, height: `${row.height}px` }"
+            >
+              <div v-if="row.kind === 'head'" class="menu-head">
+                <span class="menu-head__title">{{ row.catName }}</span>
+                <span class="menu-head__count so-num">{{ row.count }} 款</span>
               </div>
 
-              <van-empty
-                v-if="cat.dishes.length === 0"
-                image-size="72"
-                description="该分类暂无菜品"
-                class="menu-dish-empty so-card"
+              <DishCard
+                v-else-if="row.dish !== null"
+                :dish="row.dish"
+                :open="business.saleable"
+                :quantity="cart.quantityOf(row.dish.dishId)"
+                :keyword="filter"
+                @pick="(origin) => pickDish(row.dish, origin)"
+                @increase="(origin) => quickAdd(row.dish, origin)"
+                @decrease="reduceDish(row.dish)"
               />
 
-              <div
-                v-for="dish in cat.dishes"
-                :key="dish.dishId"
-                :class="['menu-dish so-card', { 'menu-dish--soldout': dish.stock.soldOut }]"
-                @click="openSheet(dish)"
-              >
-                <div class="menu-dish__image">
-                  <img v-if="dish.imageUrl !== ''" :src="dish.imageUrl" :alt="dish.name" loading="lazy" @error="hideBrokenImage" />
-                  <span v-else class="menu-dish__placeholder"><van-icon name="photo-o" size="30" /></span>
-                  <span v-if="dish.stock.soldOut" class="menu-dish__soldout">售罄</span>
-                  <span v-else-if="dish.recommended" class="menu-dish__recommend"><van-icon name="like" /> 招牌</span>
-                </div>
-                <div class="menu-dish__body">
-                  <div class="menu-dish__name">{{ dish.name }}</div>
-                  <div v-if="dish.subtitle !== ''" class="menu-dish__sub">{{ dish.subtitle }}</div>
-                  <div v-if="dish.tags.length > 0 || dish.recommended" class="menu-dish__tags">
-                    <span v-for="tag in dish.tags.slice(0, 3)" :key="tag" class="menu-dish__tag">{{ tag }}</span>
-                  </div>
-                  <div class="menu-dish__footer">
-                    <div class="so-price">
-                      <span class="so-price__cny">¥</span>
-                      <span class="so-price__int">{{ formatMoney(dish.basePrice) }}</span>
-                    </div>
-                    <div class="menu-dish__meta">
-                      <span>月售 {{ dish.monthSold }}</span>
-                      <span v-if="dish.stock.trackStock && dish.stock.remaining <= 5" class="menu-dish__low">
-                        仅余 {{ dish.stock.remaining }}
-                      </span>
-                    </div>
-                  </div>
-                </div>
-                <div class="menu-dish__action" @click.stop>
-                  <van-stepper
-                    v-if="dishInCart(dish.dishId) > 0"
-                    :model-value="dishInCart(dish.dishId)"
-                    :min="0"
-                    :max="dish.maxBuyPerOrder"
-                    @change="(value: number) => setCartQuantity(dish, value)"
-                  />
-                  <button
-                    v-else
-                    :class="['menu-dish__buy', { 'is-disabled': dish.stock.soldOut || !merchant.open }]"
-                    type="button"
-                    :disabled="dish.stock.soldOut || !merchant.open"
-                    @click="openSheet(dish)"
-                  >
-                    {{ dish.stock.soldOut ? "售罄" : merchant.open ? "选规格" : "已打烊" }}
-                  </button>
-                </div>
+              <div v-else class="menu-note">
+                <van-icon name="info-o" />
+                {{ row.note }}
               </div>
             </div>
-          </template>
+          </div>
+
+          <div v-if="sections.length === 0" class="menu-list-empty">
+            <EmptyState
+              icon="search-o"
+              :title="filter === '' ? '这个档口还没上架菜品' : `没找到和「${filter}」相关的菜`"
+              :description="filter === '' ? '商家正在上新，稍后再来看看' : '换个关键词试试，或者看看别的分类'"
+              :action-text="filter === '' ? '重新加载' : '清空搜索'"
+              @action="filter === '' ? reload() : clearFilter()"
+            />
+          </div>
         </section>
       </div>
 
-      <van-popup v-model:show="sheetVisible" position="bottom" round :closeable="true" class="menu-sheet">
-        <div v-if="currentDish" class="sheet-body">
-          <div class="sheet-header">
-            <div class="sheet-header__image">
-              <img v-if="currentDish.imageUrl !== ''" :src="currentDish.imageUrl" :alt="currentDish.name" @error="hideBrokenImage" />
-              <span v-else class="menu-dish__placeholder"><van-icon name="photo-o" size="42" /></span>
-            </div>
-            <div class="sheet-header__body">
-              <div class="sheet-header__name">{{ currentDish.name }}</div>
-              <div v-if="currentDish.subtitle !== ''" class="sheet-header__sub">{{ currentDish.subtitle }}</div>
-              <div class="so-price">
-                <span class="so-price__cny">¥</span>
-                <span class="so-price__int">{{ formatMoney(sheetUnitPrice) }}</span>
-              </div>
-            </div>
-          </div>
-
-          <div v-for="group in currentDish.groups" :key="group.groupId" class="sheet-group">
-            <div class="sheet-group__head">
-              <div class="sheet-group__title">{{ group.name }}</div>
-              <span class="sheet-group__hint">
-                {{ group.minSelect === group.maxSelect ? `必选 ${group.minSelect} 项` : `可选 ${group.minSelect}-${group.maxSelect} 项` }}
-              </span>
-            </div>
-            <div class="sheet-options">
-              <button
-                v-for="option in group.options"
-                :key="option.optionId"
-                :class="['sheet-option', { 'sheet-option--active': isSelected(group.groupId, option.optionId) }]"
-                type="button"
-                @click="toggleOption(group, option)"
-              >
-                <span>{{ option.name }}</span>
-                <span v-if="option.priceDelta !== 0" class="so-num sheet-option__delta">
-                  {{ option.priceDelta > 0 ? "+" : "-" }}¥{{ formatMoney(Math.abs(option.priceDelta)) }}
-                </span>
-                <van-icon v-if="isSelected(group.groupId, option.optionId)" name="success" class="sheet-option__check" />
-              </button>
-            </div>
-          </div>
-
-          <div class="sheet-footer">
-            <div class="sheet-stepper">
-              <span class="sheet-stepper__label">数量</span>
-              <van-stepper v-model="sheetQuantity" :min="1" :max="currentDish.maxBuyPerOrder" />
-            </div>
-            <button class="sheet-submit" type="button" :disabled="!sheetValid" @click="confirmSheet">
-              <template v-if="sheetValid">加入购物车 · ¥{{ formatMoney(sheetTotal) }}</template>
-              <template v-else>请选择规格</template>
-            </button>
-          </div>
-        </div>
-      </van-popup>
-
       <transition name="menu-bar-pop">
-        <div v-if="cart.selectedCount > 0" class="menu-bar">
-          <button class="menu-bar__left" type="button" @click="router.push({ name: 'cart' })">
-            <span class="menu-bar__cart">
-              <van-badge :content="cart.selectedCount" :max="99">
-                <van-icon name="shopping-cart-o" size="22" />
-              </van-badge>
-            </span>
-            <span class="so-price menu-bar__price">
-              <span class="so-price__cny">¥</span>
-              <span class="so-price__int">{{ formatMoney(cart.selectedAmount) }}</span>
-            </span>
-          </button>
-          <button class="menu-bar__checkout" type="button" @click="goCheckout">
-            去结算 <van-icon name="arrow" />
-          </button>
-        </div>
+        <CartBar
+          v-show="merchantCount > 0"
+          :item-count="merchantCount"
+          :amount="merchantAmount"
+          :gap="gap"
+          :pack-fee="packFee"
+          :open="business.saleable"
+          :busy="pendingCount > 0"
+          @toggle="drawerVisible = !drawerVisible"
+          @settle="goCheckout"
+        />
       </transition>
+
+      <CartDrawer v-model:show="drawerVisible" :merchant-id="props.id" @edit="editLine" />
+
+      <SkuSheet
+        v-model:show="sheetVisible"
+        :dish="sheetDish"
+        :merchant-name="merchant.name"
+        :open="business.saleable"
+        :editing="sheetEditing"
+        :origin="sheetOrigin"
+        @submitted="onSubmitted"
+      />
     </template>
   </div>
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, ref } from "vue";
-import { useRouter } from "vue-router";
-import { catalog, type DishSummary, type MenuResponse, type OptionGroup, type MenuOption } from "@smartorder/api-client";
-import { formatMoney } from "@smartorder/shared";
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from "vue";
+import { useRoute, useRouter } from "vue-router";
+import { showConfirmDialog } from "vant";
+import { catalog, type CartItem, type DishSummary, type MenuResponse } from "@smartorder/api-client";
+import { matchesFields } from "@smartorder/shared";
+import ArtImage from "../components/ArtImage.vue";
+import CartBar from "../components/CartBar.vue";
+import CartDrawer from "../components/CartDrawer.vue";
+import DishCard from "../components/DishCard.vue";
+import EmptyState from "../components/EmptyState.vue";
+import SkuSheet from "../components/SkuSheet.vue";
+import StatusTag from "../components/StatusTag.vue";
 import { useCartStore } from "../stores/cart";
-import { reportError } from "../utils/report";
+import { useDiningStore } from "../stores/dining";
+import { useNotesStore } from "../stores/notes";
+import { cachePeek, isStale, swr } from "../utils/cache";
+import { soldText, yuanText } from "../utils/format";
+import { flyToCart } from "../utils/fly";
+import { reportError, toastText } from "../utils/report";
+import { businessOf, type BusinessState } from "../utils/status";
+
+defineOptions({ name: "MenuView" });
 
 const props = defineProps<{ id: string }>();
+const route = useRoute();
 const router = useRouter();
 const cart = useCartStore();
+const dining = useDiningStore();
+const notes = useNotesStore();
 
-const menu = ref<MenuResponse | null>(null);
-const loading = ref(false);
-const merchant = computed(() => menu.value?.merchant ?? null);
-const activeCat = ref<string>("");
+const HEAD_H = 44;
+const DISH_H = 130;
+const NOTE_H = 58;
+const CANVAS_PAD = 96;
+const OVERSCAN = 4;
+const VIRTUAL_THRESHOLD = 50;
+const REFRESH_MS = 45_000;
 
-const sheetVisible = ref(false);
-const currentDish = ref<DishSummary | null>(null);
-const sheetQuantity = ref(1);
-const sheetSelection = ref<Record<string, string[]>>({});
+const OFFLINE_BUSINESS: BusinessState = {
+  key: "OFFLINE",
+  label: "暂不可点",
+  hint: "档口信息加载失败",
+  tone: "muted",
+  saleable: false,
+};
 
-const sheetUnitPrice = computed(() => {
-  if (!currentDish.value) {
-    return 0;
-  }
-  let delta = 0;
-  for (const group of currentDish.value.groups) {
-    const ids = sheetSelection.value[group.groupId] ?? [];
-    for (const option of group.options) {
-      if (ids.includes(option.optionId)) {
-        delta += option.priceDelta;
-      }
-    }
-  }
-  return currentDish.value.basePrice + delta;
-});
+type RowKind = "head" | "dish" | "note";
 
-const sheetTotal = computed(() => sheetUnitPrice.value * sheetQuantity.value);
-
-const sheetValid = computed(() => {
-  if (!currentDish.value) {
-    return false;
-  }
-  for (const group of currentDish.value.groups) {
-    const ids = sheetSelection.value[group.groupId] ?? [];
-    if (group.required && ids.length < group.minSelect) {
-      return false;
-    }
-    if (ids.length > group.maxSelect) {
-      return false;
-    }
-  }
-  return true;
-});
-
-function hideBrokenImage(event: Event): void {
-  (event.target as HTMLImageElement).style.display = "none";
+interface MenuRow {
+  key: string;
+  kind: RowKind;
+  offset: number;
+  height: number;
+  divider: boolean;
+  catId: string;
+  catName: string;
+  count: number;
+  dish: DishSummary | null;
+  note: string;
 }
 
-function openSheet(dish: DishSummary): void {
-  currentDish.value = dish;
-  sheetQuantity.value = dish.minBuyCount;
-  const initial: Record<string, string[]> = {};
-  for (const group of dish.groups) {
-    initial[group.groupId] = group.options
-      .filter((option) => option.isDefault)
-      .slice(0, group.maxSelect)
-      .map((option) => option.optionId);
+interface SectionView {
+  categoryId: string;
+  name: string;
+  count: number;
+  soldOut: number;
+  dishes: DishSummary[];
+}
+
+const menu = ref<MenuResponse | null>(cachePeek<MenuResponse>(`menu:${props.id}`));
+const pending = ref(false);
+const stale = ref(false);
+const loadError = ref("网络有点问题，重新加载试试");
+
+const filterVisible = ref(false);
+const filter = ref("");
+const filterInput = ref<HTMLInputElement | null>(null);
+const listRef = ref<HTMLElement | null>(null);
+const scrollTop = ref(0);
+const listHeight = ref(560);
+const lockCat = ref("");
+const flashDish = ref("");
+const drawerVisible = ref(false);
+const sheetVisible = ref(false);
+const sheetDish = ref<DishSummary | null>(null);
+const sheetEditing = ref<CartItem | null>(null);
+const sheetOrigin = ref<{ x: number; y: number } | null>(null);
+
+let clock: number | undefined;
+let lockTimer: number | undefined;
+let raf = 0;
+
+const merchant = computed(() => menu.value?.merchant ?? null);
+const business = computed(() => (merchant.value ? businessOf(merchant.value) : OFFLINE_BUSINESS));
+const ratingText = computed(() => ((merchant.value?.ratingScore ?? 0) / 100).toFixed(1));
+const tableChip = computed(() =>
+  dining.matchesScan(props.id) && dining.hasTable ? `已扫码绑定桌号 ${dining.tableNo}` : "",
+);
+const pendingCount = computed(() => cart.pending);
+
+const dishIndex = computed(() => {
+  const map = new Map<string, DishSummary>();
+  for (const cat of menu.value?.categories ?? []) {
+    for (const dish of cat.dishes) {
+      map.set(dish.dishId, dish);
+    }
   }
-  sheetSelection.value = initial;
+  return map;
+});
+
+const sections = computed<SectionView[]>(() => {
+  const query = filter.value.trim();
+  const out: SectionView[] = [];
+  for (const cat of menu.value?.categories ?? []) {
+    const dishes = cat.dishes.filter(
+      (dish) =>
+        query === "" ||
+        matchesFields(query, [dish.name, dish.subtitle, cat.name, ...dish.tags]),
+    );
+    if (query === "" || dishes.length > 0) {
+      out.push({
+        categoryId: cat.categoryId,
+        name: cat.name,
+        count: dishes.length,
+        soldOut: dishes.filter((dish) => dish.stock.soldOut).length,
+        dishes,
+      });
+    }
+  }
+  return out;
+});
+
+const rows = computed<MenuRow[]>(() => {
+  const out: MenuRow[] = [];
+  let offset = 0;
+  for (const cat of sections.value) {
+    out.push({
+      key: `head-${cat.categoryId}`,
+      kind: "head",
+      offset,
+      height: HEAD_H,
+      divider: false,
+      catId: cat.categoryId,
+      catName: cat.name,
+      count: cat.count,
+      dish: null,
+      note: "",
+    });
+    offset += HEAD_H;
+    if (cat.count === 0) {
+      out.push({
+        key: `note-${cat.categoryId}`,
+        kind: "note",
+        offset,
+        height: NOTE_H,
+        divider: false,
+        catId: cat.categoryId,
+        catName: cat.name,
+        count: 0,
+        dish: null,
+        note: "该分类下没有匹配的菜品",
+      });
+      offset += NOTE_H;
+      continue;
+    }
+    cat.dishes.forEach((dish, index) => {
+      out.push({
+        key: `dish-${dish.dishId}`,
+        kind: "dish",
+        offset,
+        height: DISH_H,
+        divider: index > 0,
+        catId: cat.categoryId,
+        catName: cat.name,
+        count: 0,
+        dish,
+        note: "",
+      });
+      offset += DISH_H;
+    });
+  }
+  return out;
+});
+
+const totalHeight = computed(
+  () => rows.value.reduce((max, row) => Math.max(max, row.offset + row.height), 0) + CANVAS_PAD,
+);
+
+const activeCat = computed(() => {
+  const edge = scrollTop.value + HEAD_H / 2;
+  let current = "";
+  for (const row of rows.value) {
+    if (row.kind !== "head") {
+      continue;
+    }
+    if (row.offset > edge) {
+      break;
+    }
+    current = row.catId;
+  }
+  return current;
+});
+
+const displayCat = computed(() => (lockCat.value !== "" ? lockCat.value : activeCat.value));
+
+const visibleRows = computed(() => {
+  if (rows.value.length <= VIRTUAL_THRESHOLD) {
+    return rows.value;
+  }
+  const top = Math.max(0, scrollTop.value - OVERSCAN * DISH_H);
+  const bottom = scrollTop.value + listHeight.value + OVERSCAN * DISH_H;
+  return rows.value.filter((row) => row.offset + row.height > top && row.offset < bottom);
+});
+
+const group = computed(() => cart.groups.find((row) => row.merchantId === props.id) ?? null);
+const merchantCount = computed(() => group.value?.itemCount ?? 0);
+const merchantAmount = computed(() =>
+  (group.value?.items ?? []).filter((item) => item.selected).reduce((sum, item) => sum + item.lineAmount, 0),
+);
+const gap = computed(() => group.value?.gapToMinimum ?? 0);
+const packFee = computed(() => group.value?.packFee ?? 0);
+
+function onScroll(): void {
+  if (raf !== 0) {
+    return;
+  }
+  raf = window.requestAnimationFrame(() => {
+    raf = 0;
+    const node = listRef.value;
+    if (node) {
+      scrollTop.value = node.scrollTop;
+    }
+  });
+}
+
+function goCategory(categoryId: string): void {
+  const row = rows.value.find((item) => item.kind === "head" && item.catId === categoryId);
+  const node = listRef.value;
+  if (!row || !node) {
+    return;
+  }
+  lockCat.value = categoryId;
+  node.scrollTo({ top: row.offset, behavior: "smooth" });
+  window.clearTimeout(lockTimer);
+  lockTimer = window.setTimeout(() => {
+    lockCat.value = "";
+  }, 520);
+}
+
+function toggleFilter(): void {
+  filterVisible.value = !filterVisible.value;
+  if (filterVisible.value) {
+    void nextTick(() => filterInput.value?.focus());
+  } else {
+    filter.value = "";
+  }
+}
+
+function clearFilter(): void {
+  filter.value = "";
+  void nextTick(() => filterInput.value?.focus());
+}
+
+function onBack(): void {
+  if (window.history.length > 1) {
+    router.back();
+    return;
+  }
+  void router.replace({ name: "home" });
+}
+
+async function sameMerchantOnly(): Promise<boolean> {
+  const others = cart.groups.filter((row) => row.merchantId !== props.id && row.items.length > 0);
+  if (others.length === 0) {
+    return true;
+  }
+  const detail = others.map((row) => `${row.merchantName} ${row.itemCount} 件`).join("、");
+  try {
+    await showConfirmDialog({
+      title: "已有其他档口的商品",
+      message: `购物车里还有 ${detail}。一笔订单只能来自一个档口，切换档口需要先清空它们。`,
+      confirmButtonText: "清空并继续",
+      cancelButtonText: "先不去",
+    });
+  } catch {
+    return false;
+  }
+  for (const row of others) {
+    const doomed = row.items;
+    const ok = await cart.clear(row.merchantId);
+    if (!ok) {
+      return false;
+    }
+    notes.clearFor(row.merchantId, doomed);
+  }
+  toastText("已清空其他档口的商品");
+  return true;
+}
+
+async function pickDish(dish: DishSummary | null, origin: { x: number; y: number } | null): Promise<void> {
+  if (!dish) {
+    return;
+  }
+  if (!business.value.saleable || dish.stock.soldOut) {
+    toastText(`${dish.name} 当前不可下单`);
+    return;
+  }
+  if (!(await sameMerchantOnly())) {
+    return;
+  }
+  sheetEditing.value = null;
+  sheetDish.value = dish;
+  sheetOrigin.value = origin;
   sheetVisible.value = true;
 }
 
-function isSelected(groupId: string, optionId: string): boolean {
-  return (sheetSelection.value[groupId] ?? []).includes(optionId);
-}
-
-function toggleOption(group: OptionGroup, option: MenuOption): void {
-  const current = sheetSelection.value[group.groupId] ?? [];
-  const exists = current.includes(option.optionId);
-  if (exists) {
-    sheetSelection.value = {
-      ...sheetSelection.value,
-      [group.groupId]: current.filter((id) => id !== option.optionId),
-    };
+async function quickAdd(dish: DishSummary | null, origin: { x: number; y: number } | null): Promise<void> {
+  if (!dish) {
     return;
   }
-  if (current.length >= group.maxSelect) {
+  if (!business.value.saleable) {
+    toastText("档口休息中，暂时不能下单");
     return;
   }
-  sheetSelection.value = {
-    ...sheetSelection.value,
-    [group.groupId]: [...current, option.optionId],
-  };
-}
-
-async function confirmSheet(): Promise<void> {
-  if (!currentDish.value || !sheetValid.value) {
+  if (dish.stock.soldOut) {
+    toastText(`${dish.name} 已售罄`);
     return;
   }
-  const entries: { group: string; optionId: string; name: string; priceDelta: number }[] = [];
-  for (const group of currentDish.value.groups) {
-    const ids = sheetSelection.value[group.groupId] ?? [];
-    for (const option of group.options) {
-      if (ids.includes(option.optionId)) {
-        entries.push({ group: group.groupId, optionId: option.optionId, name: option.name, priceDelta: option.priceDelta });
-      }
-    }
+  const inCart = cart.quantityOf(dish.dishId);
+  const want = Math.max(1, dish.minBuyCount);
+  if (inCart + want > dish.maxBuyPerOrder) {
+    toastText(`${dish.name} 单笔限购 ${dish.maxBuyPerOrder} 份`);
+    return;
+  }
+  if (dish.stock.trackStock && inCart + want > dish.stock.remaining) {
+    toastText(`${dish.name} 仅剩 ${dish.stock.remaining} 份`);
+    return;
+  }
+  if (!(await sameMerchantOnly())) {
+    return;
   }
   const ok = await cart.add({
-    dishId: currentDish.value.dishId,
-    merchantId: currentDish.value.merchantId,
-    entries,
-    quantity: sheetQuantity.value,
+    dishId: dish.dishId,
+    merchantId: dish.merchantId,
+    entries: [],
+    quantity: want,
   });
   if (ok) {
-    sheetVisible.value = false;
-  }
-}
-
-function dishInCart(dishId: string): number {
-  let sum = 0;
-  for (const group of cart.groups) {
-    for (const item of group.items) {
-      if (item.dishId === dishId) {
-        sum += item.quantity;
-      }
+    if (origin) {
+      flyToCart(origin, dish.imageUrl);
     }
+    drawerVisible.value = false;
   }
-  return sum;
 }
 
-function setCartQuantity(dish: DishSummary, next: number): void {
-  const group = cart.groups.find((g) => g.items.some((item) => item.dishId === dish.dishId));
-  const item = group?.items.find((i) => i.dishId === dish.dishId);
-  if (!item) {
+async function reduceDish(dish: DishSummary | null): Promise<void> {
+  if (!dish) {
     return;
   }
-  if (next === 0) {
-    void cart.patchItem(item.cartItemId, { quantity: 1 }).then(() => cart.clear(item.merchantId));
+  const lines = cart.linesOf(dish.dishId);
+  const last = lines[lines.length - 1];
+  if (!last) {
     return;
   }
-  void cart.patchItem(item.cartItemId, { quantity: next });
+  await cart.setQuantity(last, last.quantity - 1);
+  notes.prune(cart.items);
+}
+
+function editLine(item: CartItem): void {
+  const dish = dishIndex.value.get(item.dishId);
+  if (!dish) {
+    toastText("这道菜已下架，请从购物车移除");
+    return;
+  }
+  sheetEditing.value = item;
+  sheetDish.value = dish;
+  sheetOrigin.value = null;
+  drawerVisible.value = false;
+  sheetVisible.value = true;
+}
+
+function onSubmitted(): void {
+  sheetEditing.value = null;
+  notes.prune(cart.items);
 }
 
 function goCheckout(): void {
+  if (merchantCount.value === 0) {
+    toastText("购物车还是空的");
+    return;
+  }
+  if (!business.value.saleable) {
+    toastText(business.value.hint);
+    return;
+  }
+  if (gap.value > 0) {
+    toastText(`还差 ¥${yuanText(gap.value)} 起送`);
+    return;
+  }
   void router.push({ name: "checkout" });
 }
 
-async function load(): Promise<void> {
-  loading.value = true;
+async function load(force: boolean): Promise<void> {
+  if (force) {
+    stale.value = false;
+  }
+  pending.value = true;
   try {
-    const next = await catalog.menu(props.id);
-    menu.value = next;
-    if (next.categories.length > 0) {
-      activeCat.value = next.categories[0]!.categoryId;
+    const result = await swr(`menu:${props.id}`, () => catalog.menu(props.id), {
+      ttlMs: 60_000,
+      onUpdate: (data) => {
+        menu.value = data;
+      },
+    });
+    stale.value = result.stale;
+    if (!result.fromCache) {
+      loadError.value = "网络有点问题，重新加载试试";
     }
   } catch (error) {
     reportError(error);
+    loadError.value = error instanceof Error ? error.message : loadError.value;
   } finally {
-    loading.value = false;
+    pending.value = false;
   }
 }
 
+function reload(): void {
+  void load(true);
+}
+
+function measure(): void {
+  const node = listRef.value;
+  if (node) {
+    listHeight.value = node.clientHeight || 560;
+  }
+}
+
+function bindFromQuery(): void {
+  const table = route.query["table"];
+  if (typeof table === "string" && table.trim() !== "" && !dining.matchesScan(props.id)) {
+    dining.bind(props.id, table);
+  }
+}
+
+async function focusFromQuery(): Promise<void> {
+  const dishId = typeof route.query["dish"] === "string" ? route.query["dish"] : "";
+  if (dishId === "") {
+    return;
+  }
+  await nextTick();
+  const row = rows.value.find((item) => item.dish?.dishId === dishId);
+  if (!row) {
+    return;
+  }
+  listRef.value?.scrollTo({ top: Math.max(0, row.offset - HEAD_H - 4), behavior: "smooth" });
+  flashDish.value = dishId;
+  window.setTimeout(() => {
+    flashDish.value = "";
+  }, 2000);
+}
+
+watch(filter, () => {
+  void nextTick(() => {
+    const node = listRef.value;
+    if (node) {
+      node.scrollTo({ top: 0 });
+      scrollTop.value = 0;
+    }
+  });
+});
+
+watch(
+  () => props.id,
+  () => {
+    menu.value = cachePeek<MenuResponse>(`menu:${props.id}`);
+    filter.value = "";
+    void load(false);
+  },
+);
+
 onMounted(() => {
-  void load();
+  bindFromQuery();
+  measure();
+  void load(menu.value === null || isStale(`menu:${props.id}`)).then(() => focusFromQuery());
   void cart.refresh();
+  window.addEventListener("resize", measure);
+  clock = window.setInterval(() => {
+    if (document.visibilityState === "visible" && !sheetVisible.value && !drawerVisible.value) {
+      void load(true);
+    }
+  }, REFRESH_MS);
+});
+
+onBeforeUnmount(() => {
+  window.removeEventListener("resize", measure);
+  window.clearTimeout(lockTimer);
+  window.clearInterval(clock);
+  if (raf !== 0) {
+    window.cancelAnimationFrame(raf);
+  }
 });
 </script>
 
 <style scoped>
 .menu-page {
-  min-height: 100vh;
-  min-height: 100dvh;
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+  height: 100dvh;
+  height: var(--vh-100, 100vh);
+  overflow: hidden;
   background: var(--page-bg);
 }
 
-.menu-skeleton {
-  margin: 0.75rem 1rem;
-  padding: 1rem;
-}
-
 .menu-nav__title {
-  max-width: 12rem;
+  max-width: 11rem;
   overflow: hidden;
-  white-space: nowrap;
-  text-overflow: ellipsis;
+  font-size: var(--van-nav-bar-title-font-size);
   font-weight: var(--font-weight-bold);
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
-.menu-nav__status {
-  display: inline-flex;
+.menu-nav__actions {
+  display: flex;
   align-items: center;
-  gap: 0.28rem;
-  color: var(--ok);
-  font-size: 0.68rem;
+  gap: 0.25rem;
 }
 
-.menu-nav__status i {
-  width: 5px;
-  height: 5px;
-  background: currentColor;
+.menu-nav__btn {
+  display: grid;
+  place-items: center;
+  width: 30px;
+  height: 30px;
+  padding: 0;
+  color: var(--deep-text);
+  background: transparent;
+  border: 0;
   border-radius: 50%;
 }
 
-.menu-nav__status.is-closed {
-  color: var(--content-meta);
+.menu-nav__btn.is-on {
+  color: #fff;
+  background: var(--primary);
+}
+
+.menu-boot {
+  padding: 0.5rem 1rem;
+}
+
+.menu-boot__list {
+  display: grid;
+  gap: 0.6rem;
+  margin-top: 0.6rem;
+}
+
+.menu-boot :deep(.van-skeleton) {
+  padding: 0.9rem;
+  background: var(--card-bg);
+  border-radius: var(--card-radius);
 }
 
 .menu-hero {
-  display: grid;
-  grid-template-columns: 54px minmax(0, 1fr);
-  gap: 0.8rem;
-  align-items: center;
-  padding: 1rem 1.1rem 1.15rem;
+  flex: none;
+  padding: 0.85rem 1.05rem 0.7rem;
   color: #fff;
   background:
-    radial-gradient(circle at 92% -20%, rgba(255, 213, 153, 0.18), transparent 42%),
-    linear-gradient(145deg, #1a4638 0%, #21634f 58%, #2b7559 100%);
-  border-radius: 0 0 24px 24px;
+    radial-gradient(circle at 92% -30%, rgba(255, 200, 120, 0.22), transparent 46%),
+    linear-gradient(150deg, #194336 0%, #21634f 55%, #2d7a5c 100%);
+  border-radius: 0 0 22px 22px;
+}
+
+.menu-hero__top {
+  display: grid;
+  grid-template-columns: 52px minmax(0, 1fr) auto;
+  gap: 0.7rem;
+  align-items: center;
 }
 
 .menu-hero__logo {
-  position: relative;
-  width: 54px;
-  height: 54px;
+  display: block;
+  width: 52px;
+  height: 52px;
   overflow: hidden;
-  display: grid;
-  place-items: center;
-  color: #fff5df;
-  background: linear-gradient(145deg, rgba(255, 255, 255, 0.22), rgba(255, 255, 255, 0.08));
-  border: 1px solid rgba(255, 255, 255, 0.25);
-  border-radius: 16px;
-  box-shadow: 0 6px 16px rgba(7, 38, 27, 0.22);
+  border: 1px solid rgba(255, 255, 255, 0.24);
+  border-radius: 15px;
 }
 
-.menu-hero__logo > span {
-  font-size: 1.5rem;
-  font-weight: var(--font-weight-bold);
-}
-
-.menu-hero__logo img {
-  position: absolute;
-  inset: 0;
+.menu-hero__logo :deep(.art-image) {
   width: 100%;
   height: 100%;
-  object-fit: cover;
 }
 
 .menu-hero__name {
   overflow: hidden;
-  font-size: 1.05rem;
-  line-height: 1.3;
+  font-size: 1.06rem;
+  line-height: 1.25;
   font-weight: var(--font-weight-bold);
-  white-space: nowrap;
   text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .menu-hero__meta {
   display: flex;
   align-items: center;
-  gap: 0.45rem;
-  margin-top: 0.3rem;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  margin-top: 0.32rem;
   font-size: 0.68rem;
-  color: rgba(255, 255, 255, 0.85);
-}
-
-.menu-hero__category {
-  padding: 0.1rem 0.45rem;
-  background: rgba(255, 255, 255, 0.16);
-  border-radius: 6px;
-  font-size: 0.62rem;
-}
-
-.menu-hero__rating {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.12rem;
-  color: #f9d8a7;
-  font-family: var(--font-num);
-  font-weight: var(--font-weight-semibold);
-}
-
-.menu-hero__rating :deep(.van-icon) {
-  font-size: 11px;
+  color: rgba(255, 255, 255, 0.82);
 }
 
 .menu-hero__meta b {
@@ -490,35 +813,163 @@ onMounted(() => {
   font-weight: var(--font-weight-semibold);
 }
 
-.menu-hero__sub {
-  display: flex;
+.menu-hero__rating {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.14rem;
+  color: #ffd79a;
+  font-family: var(--font-num);
+  font-weight: var(--font-weight-semibold);
+}
+
+.menu-hero__category {
+  padding: 0.08rem 0.4rem;
+  background: rgba(255, 255, 255, 0.16);
+  border-radius: 6px;
+  font-size: 0.6rem;
+}
+
+.menu-hero__switch {
+  display: inline-flex;
   align-items: center;
   gap: 0.2rem;
-  margin-top: 0.3rem;
-  overflow: hidden;
-  color: rgba(255, 255, 255, 0.66);
+  padding: 0.24rem 0.5rem;
+  color: rgba(255, 255, 255, 0.9);
+  background: rgba(255, 255, 255, 0.14);
+  border: 0;
+  border-radius: 999px;
+  font-size: 0.63rem;
+}
+
+.menu-hero__foot {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.2rem 0.85rem;
+  margin-top: 0.6rem;
+  padding-top: 0.55rem;
+  border-top: 1px solid rgba(255, 255, 255, 0.14);
+}
+
+.menu-hero__line {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.2rem;
+  color: rgba(255, 255, 255, 0.72);
   font-size: 0.66rem;
-  white-space: nowrap;
-  text-overflow: ellipsis;
+}
+
+.menu-hero__table {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  margin-top: 0.55rem;
+  padding: 0.26rem 0.3rem 0.26rem 0.55rem;
+  color: #1d3b2f;
+  background: #ffe0b8;
+  border-radius: 999px;
+  font-size: 0.66rem;
+  font-weight: var(--font-weight-semibold);
+}
+
+.menu-hero__table button {
+  padding: 0.1rem 0.42rem;
+  color: #8a5a1f;
+  background: rgba(255, 255, 255, 0.7);
+  border: 0;
+  border-radius: 999px;
+  font-size: 0.6rem;
+}
+
+.menu-alert {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  margin: 0.55rem 0.85rem 0;
+  padding: 0.45rem 0.65rem;
+  border-radius: 12px;
+  font-size: 0.7rem;
+  line-height: 1.35;
+}
+
+.menu-alert button {
+  margin-left: auto;
+  padding: 0.14rem 0.5rem;
+  color: inherit;
+  background: rgba(255, 255, 255, 0.85);
+  border: 0;
+  border-radius: 999px;
+  font-size: 0.64rem;
+  font-weight: var(--font-weight-semibold);
+}
+
+.menu-alert--stop,
+.menu-alert--soon {
+  color: #8a4a12;
+  background: var(--warn-soft);
+}
+
+.menu-alert--cache {
+  color: var(--content-meta);
+  background: var(--muted-soft);
+}
+
+.menu-filter {
+  position: relative;
+  flex: none;
+  margin: 0.55rem 0.85rem 0;
+}
+
+.menu-filter__icon {
+  position: absolute;
+  top: 50%;
+  left: 0.75rem;
+  color: var(--content-meta);
+  transform: translateY(-50%);
+}
+
+.menu-filter__input {
+  width: 100%;
+  height: 36px;
+  padding: 0 2.1rem;
+  color: var(--deep-text);
+  background: var(--card-bg);
+  border: 1px solid var(--line-color);
+  border-radius: 999px;
+  font-size: var(--fs-body);
+  outline: none;
+}
+
+.menu-filter__input:focus {
+  border-color: var(--primary);
+  box-shadow: 0 0 0 3px var(--primary-soft);
+}
+
+.menu-filter__clear {
+  position: absolute;
+  top: 50%;
+  right: 0.55rem;
+  display: grid;
+  place-items: center;
+  width: 24px;
+  height: 24px;
+  color: var(--muted);
+  background: transparent;
+  border: 0;
+  transform: translateY(-50%);
 }
 
 .menu-body {
   display: grid;
-  grid-template-columns: 92px minmax(0, 1fr);
-  min-height: calc(100vh - 52px - 118px);
+  grid-template-columns: 80px minmax(0, 1fr);
+  flex: 1;
+  min-height: 0;
+  margin-top: 0.55rem;
 }
 
 .menu-cats {
-  position: sticky;
-  top: 52px;
-  align-self: start;
-  max-height: calc(100vh - 52px);
   overflow-y: auto;
-  padding: 0.6rem 0.45rem;
-  background: var(--btn-regular-bg);
-  display: flex;
-  flex-direction: column;
-  gap: 0.35rem;
+  padding: 0.2rem 0 0.75rem;
+  background: color-mix(in srgb, var(--card-bg) 55%, var(--page-bg));
   scrollbar-width: none;
 }
 
@@ -526,505 +977,177 @@ onMounted(() => {
   display: none;
 }
 
-.menu-cats__empty {
-  padding: 1rem 0.5rem;
-  color: var(--content-meta);
-  font-size: 0.72rem;
-  text-align: center;
-}
-
 .menu-cat {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 0.1rem;
-  padding: 0.7rem 0.3rem;
-  text-align: center;
+  position: relative;
+  display: grid;
+  gap: 0.12rem;
+  width: 100%;
+  padding: 0.62rem 0.4rem 0.62rem 0.55rem;
+  color: var(--content-meta);
   background: transparent;
   border: 0;
-  border-radius: 14px;
-  color: var(--content-meta);
-  font-size: 0.8rem;
+  font-size: 0.72rem;
   line-height: 1.3;
-  transition: background var(--duration-fast) var(--ease-standard), color var(--duration-fast) var(--ease-standard);
+  text-align: left;
+  transition:
+    color var(--duration-fast) var(--ease-standard),
+    background var(--duration-fast) var(--ease-standard);
 }
 
 .menu-cat__name {
-  max-width: 100%;
   overflow: hidden;
-  white-space: nowrap;
   text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .menu-cat__count {
+  color: var(--meta-divider);
   font-family: var(--font-num);
-  font-size: 0.6rem;
-  opacity: 0.7;
+  font-size: 0.58rem;
 }
 
 .menu-cat--active {
-  background: var(--card-bg);
-  color: var(--primary);
+  color: var(--deep-text);
+  background: var(--page-bg);
   font-weight: var(--font-weight-semibold);
-  box-shadow: 0 4px 14px rgba(37, 51, 39, 0.07);
+}
+
+.menu-cat--active .menu-cat__count {
+  color: var(--primary);
+}
+
+.menu-cat__bar {
+  position: absolute;
+  top: 50%;
+  left: 0;
+  width: 3px;
+  height: 16px;
+  background: var(--primary);
+  border-radius: 0 3px 3px 0;
+  transform: translateY(-50%);
+}
+
+.menu-cat__dot {
+  position: absolute;
+  top: 0.5rem;
+  right: 0.45rem;
+  width: 5px;
+  height: 5px;
+  background: var(--caution);
+  border-radius: 50%;
+}
+
+.menu-cats__empty {
+  padding: 1rem 0.5rem;
+  color: var(--muted);
+  font-size: 0.65rem;
+  text-align: center;
 }
 
 .menu-dishes {
-  padding: 0.75rem 0.75rem calc(6.5rem + env(safe-area-inset-bottom));
-}
-
-.menu-dish-group__title {
-  display: flex;
-  align-items: baseline;
-  gap: 0.35rem;
-  padding: 0.15rem 0.3rem 0.6rem;
-  color: var(--deep-text);
-  font-size: 0.95rem;
-  font-weight: var(--font-weight-bold);
-}
-
-.menu-dish-group__count {
-  color: var(--content-meta);
-  font-size: 0.66rem;
-  font-weight: var(--font-weight-normal);
-}
-
-.menu-dish-empty {
-  margin-bottom: 0.75rem;
-}
-
-.menu-dish {
   position: relative;
-  display: grid;
-  grid-template-columns: 84px minmax(0, 1fr) auto;
-  gap: 0.65rem;
-  padding: 0.7rem;
-  margin-bottom: 0.65rem;
-  transition: transform var(--duration-fast) var(--ease-standard);
+  overflow-y: auto;
+  padding: 0 0.85rem;
+  background: var(--page-bg);
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior: contain;
+  scrollbar-width: none;
 }
 
-.menu-dish:active {
-  transform: scale(0.985);
+.menu-dishes::-webkit-scrollbar {
+  display: none;
 }
 
-.menu-dish--soldout {
-  opacity: 0.75;
-}
-
-.menu-dish__image {
+.menu-canvas {
   position: relative;
-  width: 84px;
-  height: 84px;
+  width: 100%;
+}
+
+.menu-row {
+  position: absolute;
+  top: 0;
+  right: 0;
+  left: 0;
   overflow: hidden;
-  display: grid;
-  place-items: center;
-  background: var(--muted-soft);
+}
+
+.menu-row.has-line::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  right: 0;
+  left: 0;
+  height: 1px;
+  background: var(--line-divider);
+}
+
+.menu-row--dish :deep(.dish) {
+  height: 100%;
+  align-items: center;
+}
+
+.menu-row.is-flash {
+  animation: menu-flash 2s var(--ease-standard) 1;
   border-radius: 14px;
 }
 
-.menu-dish__image img {
-  width: 100%;
+@keyframes menu-flash {
+  0%,
+  40% {
+    background: var(--primary-soft);
+  }
+  100% {
+    background: transparent;
+  }
+}
+
+.menu-head {
+  display: flex;
+  align-items: baseline;
+  gap: 0.4rem;
   height: 100%;
-  object-fit: cover;
+  padding-left: 0.1rem;
 }
 
-.menu-dish--soldout .menu-dish__image img {
-  filter: grayscale(0.9);
+.menu-head__title {
+  color: var(--deep-text);
+  font-size: 0.82rem;
+  font-weight: var(--font-weight-bold);
 }
 
-.menu-dish__placeholder {
-  display: grid;
-  place-items: center;
-  width: 100%;
+.menu-head__count {
+  color: var(--meta-divider);
+  font-family: var(--font-num);
+  font-size: 0.62rem;
+}
+
+.menu-note {
+  display: flex;
+  align-items: center;
+  gap: 0.3rem;
   height: 100%;
   color: var(--muted);
-  background: linear-gradient(145deg, var(--muted-soft), var(--line-divider));
+  font-size: 0.7rem;
 }
 
-.menu-dish__soldout {
+.menu-list-empty {
   position: absolute;
   inset: 0;
   display: grid;
   place-items: center;
-  color: #fff;
-  background: rgba(34, 40, 33, 0.5);
-  border-radius: 14px;
-  font-size: 0.8rem;
-  font-weight: var(--font-weight-semibold);
-  letter-spacing: 0.1em;
-}
-
-.menu-dish__recommend {
-  position: absolute;
-  top: 5px;
-  left: 5px;
-  display: inline-flex;
-  align-items: center;
-  gap: 0.15rem;
-  padding: 0.12rem 0.4rem;
-  color: #fff;
-  background: linear-gradient(135deg, #ff8055, #f0643c);
-  border-radius: 999px;
-  font-size: 0.6rem;
-  font-weight: var(--font-weight-semibold);
-  box-shadow: 0 3px 8px rgba(240, 100, 60, 0.35);
-}
-
-.menu-dish__recommend :deep(.van-icon) {
-  font-size: 10px;
-}
-
-.menu-dish__body {
-  display: flex;
-  flex-direction: column;
-  gap: 0.18rem;
-  min-width: 0;
-}
-
-.menu-dish__name {
-  overflow: hidden;
-  color: var(--deep-text);
-  font-weight: var(--font-weight-semibold);
-  white-space: nowrap;
-  text-overflow: ellipsis;
-}
-
-.menu-dish__sub {
-  overflow: hidden;
-  color: var(--content-meta);
-  font-size: 0.7rem;
-  line-height: 1.35;
-  white-space: nowrap;
-  text-overflow: ellipsis;
-}
-
-.menu-dish__tags {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.25rem;
-}
-
-.menu-dish__tag {
-  padding: 0.1rem 0.4rem;
-  color: var(--btn-content);
-  background: var(--btn-regular-bg);
-  border-radius: 5px;
-  font-size: 0.6rem;
-}
-
-.menu-dish__footer {
-  display: flex;
-  align-items: flex-end;
-  justify-content: space-between;
-  gap: 0.4rem;
-  margin-top: auto;
-  padding-top: 0.1rem;
-}
-
-.menu-dish__meta {
-  display: flex;
-  flex-direction: column;
-  align-items: flex-end;
-  gap: 0.1rem;
-  color: var(--content-meta);
-  font-size: 0.62rem;
-  white-space: nowrap;
-}
-
-.menu-dish__low {
-  color: var(--caution);
-  font-weight: var(--font-weight-semibold);
-}
-
-.menu-dish__action {
-  display: flex;
-  align-items: flex-end;
-}
-
-.menu-dish__buy {
-  padding: 0.4rem 0.75rem;
-  color: #fff;
-  background: linear-gradient(135deg, #ff8055, #d94e29);
-  border: 0;
-  border-radius: 999px;
-  font-size: 0.74rem;
-  font-weight: var(--font-weight-semibold);
-  box-shadow: 0 5px 14px rgba(240, 100, 60, 0.32);
-  transition: opacity var(--duration-fast) var(--ease-standard), transform var(--duration-fast) var(--ease-standard);
-}
-
-.menu-dish__buy:active {
-  transform: scale(0.94);
-}
-
-.menu-dish__buy.is-disabled {
-  background: var(--btn-regular-bg);
-  color: var(--content-meta);
-  box-shadow: none;
-}
-
-.menu-sheet {
-  max-height: 86vh;
-  max-height: 86dvh;
-}
-
-.sheet-body {
-  padding: 1.1rem 1.1rem calc(0.9rem + env(safe-area-inset-bottom));
-}
-
-.sheet-header {
-  display: grid;
-  grid-template-columns: 92px minmax(0, 1fr);
-  gap: 0.8rem;
-  padding-bottom: 0.9rem;
-  border-bottom: 1px solid var(--line-divider);
-}
-
-.sheet-header__image {
-  width: 92px;
-  height: 92px;
-  overflow: hidden;
-  display: grid;
-  place-items: center;
-  background: var(--muted-soft);
-  border-radius: 16px;
-}
-
-.sheet-header__image img {
-  width: 100%;
-  height: 100%;
-  object-fit: cover;
-}
-
-.sheet-header__name {
-  color: var(--deep-text);
-  font-size: 1.05rem;
-  line-height: 1.3;
-  font-weight: var(--font-weight-bold);
-}
-
-.sheet-header__sub {
-  margin: 0.15rem 0 0.4rem;
-  color: var(--content-meta);
-  font-size: 0.75rem;
-}
-
-.sheet-group {
-  padding: 0.9rem 0 0.2rem;
-}
-
-.sheet-group__head {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  margin-bottom: 0.55rem;
-}
-
-.sheet-group__title {
-  color: var(--deep-text);
-  font-size: 0.92rem;
-  font-weight: var(--font-weight-bold);
-}
-
-.sheet-group__hint {
-  padding: 0.12rem 0.45rem;
-  color: var(--accent-green);
-  background: var(--accent-green-soft);
-  border-radius: 999px;
-  font-size: 0.62rem;
-}
-
-.sheet-options {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.45rem;
-}
-
-.sheet-option {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.28rem;
-  max-width: 100%;
-  padding: 0.42rem 0.7rem;
-  background: var(--btn-regular-bg);
-  color: var(--btn-content);
-  border: 1px solid transparent;
-  border-radius: var(--chip-radius);
-  font-size: 0.82rem;
-  transition: background var(--duration-fast) var(--ease-standard), border-color var(--duration-fast) var(--ease-standard), color var(--duration-fast) var(--ease-standard);
-}
-
-.sheet-option span:first-child {
-  overflow: hidden;
-  white-space: nowrap;
-  text-overflow: ellipsis;
-}
-
-.sheet-option__delta {
-  font-size: 0.68rem;
-  opacity: 0.75;
-}
-
-.sheet-option__check {
-  font-size: 12px;
-}
-
-.sheet-option--active {
-  background: var(--primary-soft);
-  border-color: var(--primary);
-  color: var(--primary);
-  font-weight: var(--font-weight-semibold);
-}
-
-.sheet-footer {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 0.75rem;
-  margin-top: 1rem;
-  padding-top: 0.9rem;
-  border-top: 1px solid var(--line-divider);
-}
-
-.sheet-stepper {
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
-}
-
-.sheet-stepper__label {
-  color: var(--content-meta);
-  font-size: 0.78rem;
-}
-
-.sheet-submit {
-  flex: 1;
-  min-height: 44px;
-  color: #fff;
-  background: linear-gradient(135deg, #ff8055, #d94e29);
-  border: 0;
-  border-radius: 999px;
-  font-size: 0.9rem;
-  font-weight: var(--font-weight-bold);
-  box-shadow: 0 8px 20px rgba(240, 100, 60, 0.32);
-  transition: opacity var(--duration-fast) var(--ease-standard), transform var(--duration-fast) var(--ease-standard);
-}
-
-.sheet-submit:disabled {
-  background: var(--btn-regular-bg);
-  color: var(--content-meta);
-  box-shadow: none;
-}
-
-.sheet-submit:not(:disabled):active {
-  transform: scale(0.97);
-}
-
-.menu-bar {
-  position: fixed;
-  left: 50%;
-  transform: translateX(-50%);
-  bottom: calc(env(safe-area-inset-bottom) + 12px);
-  width: calc(100% - 1.5rem);
-  max-width: calc(var(--app-max) - 1.5rem);
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
-  padding: 0.5rem 0.55rem 0.5rem 0.6rem;
-  background: linear-gradient(120deg, #14261e, #1d352b);
-  border-radius: 999px;
-  box-shadow: var(--shadow-float);
-  z-index: 20;
+  padding: 0 0.5rem;
 }
 
 .menu-bar-pop-enter-active,
 .menu-bar-pop-leave-active {
-  transition: transform 0.25s var(--ease-standard), opacity 0.25s var(--ease-standard);
+  transition:
+    transform var(--duration-fast) var(--ease-standard),
+    opacity var(--duration-fast) var(--ease-standard);
 }
 
 .menu-bar-pop-enter-from,
 .menu-bar-pop-leave-to {
-  transform: translateX(-50%) translateY(120%);
   opacity: 0;
-}
-
-.menu-bar__left {
-  display: flex;
-  align-items: center;
-  gap: 0.6rem;
-  flex: 1;
-  min-width: 0;
-  padding: 0;
-  background: transparent;
-  border: 0;
-}
-
-.menu-bar__cart {
-  position: relative;
-  display: grid;
-  place-items: center;
-  width: 44px;
-  height: 44px;
-  flex: none;
-  color: #fff;
-  background: linear-gradient(135deg, #ff8055, #d94e29);
-  border-radius: 50%;
-  box-shadow: 0 6px 16px rgba(240, 100, 60, 0.4);
-}
-
-.menu-bar__price {
-  color: #fff;
-  font-size: 1.15rem;
-}
-
-.menu-bar__price .so-price__cny {
-  font-size: 0.75rem;
-}
-
-.menu-bar__checkout {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.2rem;
-  min-height: 40px;
-  padding: 0 1.15rem;
-  color: #7a2d12;
-  background: linear-gradient(135deg, #ffe3b8, #ffc37e);
-  border: 0;
-  border-radius: 999px;
-  font-size: 0.85rem;
-  font-weight: var(--font-weight-bold);
-}
-
-.menu-bar__checkout:active {
-  transform: scale(0.96);
-}
-
-@media (max-width: 360px) {
-  .menu-body {
-    grid-template-columns: 82px minmax(0, 1fr);
-  }
-
-  .menu-dish {
-    grid-template-columns: 72px minmax(0, 1fr);
-    grid-template-areas:
-      "image body"
-      "action action";
-    gap: 0.55rem;
-  }
-
-  .menu-dish__image {
-    grid-area: image;
-    width: 72px;
-    height: 72px;
-  }
-
-  .menu-dish__body {
-    grid-area: body;
-  }
-
-  .menu-dish__action {
-    grid-area: action;
-    justify-content: flex-end;
-  }
+  transform: translateY(14px);
 }
 </style>

@@ -19,6 +19,12 @@ public enum ErrorCode {
     CAMPUS_NOT_BOUND(20005, "请先完成学生身份认证"),
     SMS_RATE_LIMITED(20006, "验证码发送太频繁"),
     SMS_CODE_INVALID(20007, "验证码不正确或已过期"),
+    ACCOUNT_PASSWORD_INVALID(20020, "账号或密码不正确"),
+    LOGIN_FAILED(20008, "学号或密码不正确"),
+    STUDENT_EXISTS(20009, "该学号已注册，请直接登录"),
+    STUDENT_NO_INVALID(20010, "学号格式不正确，应为 8 至 12 位数字"),
+    PASSWORD_TOO_SHORT(20011, "密码至少 6 位"),
+    STUDENT_NOT_VERIFIED(20012, "该学号尚未完成学籍审核，暂时无法登录"),
 
     MERCHANT_NOT_FOUND(30001, "档口不存在"),
     MERCHANT_CLOSED(30002, "档口当前不营业"),

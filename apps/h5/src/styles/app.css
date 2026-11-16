@@ -1,8 +1,8 @@
 :root {
   --app-max: 30rem;
-  --primary: #f0643c;
-  --primary-dark: #d94e29;
-  --primary-soft: #fff0e9;
+  --primary: #ff7a00;
+  --primary-dark: #e26500;
+  --primary-soft: #fff2e0;
   --accent-green: #21634f;
   --accent-green-soft: #e9f3ee;
   --page-bg: #f6f7f3;
@@ -38,6 +38,11 @@
   --card-radius: 18px;
   --control-radius: 12px;
   --chip-radius: 999px;
+  --fs-body: 14px;
+  --fs-price: 16px;
+  --fs-btn: 16px;
+  --btn-h: 44px;
+  --btn-radius: 22px;
   --shadow-card: 0 8px 28px rgba(37, 51, 39, 0.055);
   --shadow-float: 0 12px 36px rgba(31, 45, 35, 0.14);
   --font-sans: "PingFang SC", "Microsoft YaHei", "Noto Sans CJK SC", system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
@@ -84,9 +89,9 @@
 }
 
 :root.dark {
-  --primary: #ff815b;
-  --primary-dark: #f0643c;
-  --primary-soft: #3d2b25;
+  --primary: #ffa040;
+  --primary-dark: #ff7a00;
+  --primary-soft: #3b2a17;
   --accent-green: #8fc7ad;
   --accent-green-soft: #243a31;
   --page-bg: #151915;
@@ -326,9 +331,9 @@ body {
 }
 
 .van-button--primary {
-  background: linear-gradient(135deg, #ff8055 0%, var(--primary) 70%, var(--primary-dark) 100%);
+  background: linear-gradient(135deg, #ffa14a 0%, var(--primary) 70%, var(--primary-dark) 100%);
   border: 0;
-  box-shadow: 0 7px 18px rgba(240, 100, 60, 0.2);
+  box-shadow: 0 7px 18px rgba(255, 122, 0, 0.22);
 }
 
 .van-button--primary.van-button--plain {

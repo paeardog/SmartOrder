@@ -11,6 +11,12 @@ const routes: RouteRecordRaw[] = [
     meta: { title: "档口菜单" },
   },
   {
+    path: "/search",
+    name: "search",
+    component: () => import("./views/SearchView.vue"),
+    meta: { title: "搜索" },
+  },
+  {
     path: "/cart",
     name: "cart",
     component: () => import("./views/CartView.vue"),
@@ -30,6 +36,19 @@ const routes: RouteRecordRaw[] = [
     meta: { title: "收银台", auth: true },
   },
   {
+    path: "/pay-result/:orderNo",
+    name: "pay-result",
+    component: () => import("./views/PayResultView.vue"),
+    props: true,
+    meta: { title: "支付结果", auth: true },
+  },
+  {
+    path: "/address",
+    name: "address",
+    component: () => import("./views/AddressView.vue"),
+    meta: { title: "收货地址", auth: true },
+  },
+  {
     path: "/orders",
     name: "orders",
     component: () => import("./views/OrdersView.vue"),
@@ -41,6 +60,31 @@ const routes: RouteRecordRaw[] = [
     component: () => import("./views/OrderDetailView.vue"),
     props: true,
     meta: { title: "订单详情", auth: true },
+  },
+  {
+    path: "/review/:orderNo",
+    name: "review",
+    component: () => import("./views/ReviewView.vue"),
+    props: true,
+    meta: { title: "评价订单", auth: true },
+  },
+  {
+    path: "/coupons",
+    name: "coupons",
+    component: () => import("./views/CouponView.vue"),
+    meta: { title: "优惠券", auth: true },
+  },
+  {
+    path: "/favorites",
+    name: "favorites",
+    component: () => import("./views/FavoritesView.vue"),
+    meta: { title: "我的收藏", auth: true },
+  },
+  {
+    path: "/notices",
+    name: "notices",
+    component: () => import("./views/NoticeView.vue"),
+    meta: { title: "消息通知", auth: true },
   },
   {
     path: "/profile",

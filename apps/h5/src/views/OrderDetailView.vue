@@ -1,242 +1,436 @@
 <template>
   <div class="so-page so-page--flat detail-page">
-    <van-nav-bar title="订单详情" left-arrow @click-left="router.back()" />
+    <van-nav-bar title="订单详情" left-arrow @click-left="router.back()">
+      <template #right>
+        <button type="button" class="detail-refresh" aria-label="刷新" @click="reload">
+          <van-icon name="renew" size="17" :class="{ 'is-spinning': refreshing }" />
+        </button>
+      </template>
+    </van-nav-bar>
 
-    <van-skeleton v-if="loading" title :row="6" class="detail-skeleton so-card" />
+    <van-skeleton v-if="loading && detail === null" title :row="6" class="detail-skeleton so-card" />
 
-    <template v-else-if="detail">
-      <header class="detail-hero">
-        <div class="detail-hero__icon">
-          <van-icon :name="statusIcon(detail.status)" size="26" />
-        </div>
-        <div class="detail-hero__body">
-          <div class="detail-hero__status">{{ statusLabel(detail.status) }}</div>
-          <div v-if="detail.status === 'PENDING_PAYMENT'" class="detail-hero__sub">
-            请在 <b class="so-num">{{ countdown }}</b> 内完成支付，超时订单将自动取消
+    <EmptyState
+      v-else-if="detail === null"
+      icon="warning-o"
+      title="订单没加载出来"
+      :description="offlineText"
+      action-text="重新加载"
+      @action="reload"
+    />
+
+    <template v-else>
+      <header :class="['detail-hero', `detail-hero--${hero.tone}`]">
+        <div class="detail-hero__top">
+          <span class="detail-hero__icon"><van-icon :name="hero.icon" size="22" /></span>
+          <div class="detail-hero__text">
+            <h2>{{ hero.title }}</h2>
+            <p>{{ hero.hint }}</p>
           </div>
-          <div v-else-if="detail.pickupCode" class="detail-hero__sub">凭取餐码到档口取餐</div>
-          <div v-else class="detail-hero__sub">订单已提交，档口正在准备</div>
         </div>
-        <div v-if="detail.pickupCode" class="detail-hero__code">
-          <span class="detail-hero__code-label">取餐码</span>
-          <span class="so-code detail-hero__code-value">{{ detail.pickupCode }}</span>
+
+        <div v-if="showCode" class="detail-code">
+          <div class="detail-code__label">取餐码</div>
+          <div class="detail-code__value">{{ detail.pickupCode }}</div>
+          <div class="detail-code__tip">{{ detail.pickupPointName }} · {{ codeTip }}</div>
         </div>
+
+        <ol v-if="isFlow" class="detail-steps">
+          <li v-for="(step, index) in steps" :key="step" :class="['detail-steps__item', { 'is-done': index <= stepIndex, 'is-current': index === stepIndex }]">
+            <span class="detail-steps__dot" />
+            <span class="detail-steps__label">{{ step }}</span>
+          </li>
+        </ol>
       </header>
 
       <div class="detail-body">
-        <section class="detail-section so-card">
-          <div class="detail-section__title">
-            <span class="detail-section__badge"><van-icon name="shop-o" size="14" /></span>
-            档口信息
-          </div>
-          <div class="detail-row">
-            <span>档口</span>
-            <span class="detail-row__value">{{ detail.merchantName }}</span>
-          </div>
-          <div class="detail-row">
-            <span>取餐点</span>
-            <span class="detail-row__value">{{ detail.pickupPointName }}</span>
-          </div>
-          <div class="detail-row">
-            <span>联系人</span>
-            <span class="detail-row__value so-num">{{ detail.contactName }} {{ detail.contactPhone }}</span>
-          </div>
-          <div v-if="detail.remark !== ''" class="detail-row">
-            <span>备注</span>
-            <span class="detail-row__value detail-row__value--remark">{{ detail.remark }}</span>
-          </div>
-          <div class="detail-row">
-            <span>订单号</span>
-            <span class="detail-row__value so-num detail-row__value--dim">{{ detail.orderNo }}</span>
-          </div>
+        <section v-if="detail.status === 'PENDING_PAYMENT'" class="detail-notice detail-notice--warn">
+          <van-icon name="clock-o" size="15" />
+          <span>{{ countdownText }}</span>
+        </section>
+        <section v-else-if="detail.status === 'PAID' && cancelHint !== ''" class="detail-notice">
+          <van-icon name="info-o" size="15" />
+          <span>{{ cancelHint }}</span>
+        </section>
+        <section v-else-if="detail.status === 'READY' && !showCode" class="detail-notice detail-notice--ok">
+          <van-icon name="bag-o" size="15" />
+          <span>{{ readyHint }}</span>
         </section>
 
-        <section class="detail-section so-card">
-          <div class="detail-section__title">订单明细</div>
+        <section class="detail-card so-card">
+          <div class="detail-card__title">
+            <span class="detail-card__badge"><van-icon name="shop-o" size="13" /></span>
+            <button type="button" class="detail-card__link" @click="router.push({ name: 'menu', params: { id: detail.merchantId } })">
+              {{ detail.merchantName }}
+              <van-icon name="arrow" size="12" />
+            </button>
+          </div>
+          <div class="detail-row"><span>取餐方式</span><b>{{ fulfillText }}</b></div>
+          <div class="detail-row"><span>取餐点</span><b>{{ detail.pickupPointName }}</b></div>
+          <div class="detail-row"><span>联系人</span><b class="so-num">{{ detail.contactName }} {{ maskPhone(detail.contactPhone) }}</b></div>
+          <div v-if="detail.remark !== ''" class="detail-row"><span>备注</span><b class="detail-row__wrap">{{ detail.remark }}</b></div>
+          <div v-if="expectText !== ''" class="detail-row"><span>预计取餐</span><b>{{ expectText }}</b></div>
+        </section>
+
+        <section class="detail-card so-card">
+          <div class="detail-card__title">餐品明细</div>
           <div v-for="item in detail.items" :key="item.itemId" class="detail-item">
-            <div class="detail-item__image">
-              <img v-if="item.dishImage !== ''" :src="item.dishImage" :alt="item.dishName" loading="lazy" @error="hideBrokenImage" />
-              <span v-else class="detail-item__placeholder"><van-icon name="photo-o" size="24" /></span>
-            </div>
+            <ArtImage :src="item.dishImage" :name="item.dishName" radius="12px" class="detail-item__image" />
             <div class="detail-item__body">
               <div class="detail-item__name">{{ item.dishName }}</div>
               <div v-if="item.optionText !== ''" class="detail-item__opt">{{ item.optionText }}</div>
             </div>
             <div class="detail-item__right">
-              <div class="so-num detail-item__amount">¥{{ formatMoney(item.lineAmount) }}</div>
+              <div class="so-num">¥{{ yuanText(item.lineAmount) }}</div>
               <div class="detail-item__qty so-num">×{{ item.quantity }}</div>
             </div>
           </div>
           <hr class="so-divider" />
-          <div class="detail-row">
-            <span>商品金额</span>
-            <span class="so-num">¥{{ formatMoney(detail.itemAmount) }}</span>
-          </div>
-          <div class="detail-row">
-            <span>包装费</span>
-            <span class="so-num">¥{{ formatMoney(detail.packFee) }}</span>
-          </div>
-          <div v-if="detail.deliveryFee > 0" class="detail-row">
-            <span>配送费</span>
-            <span class="so-num">¥{{ formatMoney(detail.deliveryFee) }}</span>
-          </div>
-          <div v-if="detail.discountAmount > 0" class="detail-row detail-row--discount">
-            <span>优惠</span>
-            <span class="so-num">-¥{{ formatMoney(detail.discountAmount) }}</span>
-          </div>
+          <div class="detail-row"><span>商品金额</span><b class="so-num">¥{{ yuanText(detail.itemAmount) }}</b></div>
+          <div v-if="detail.packFee > 0" class="detail-row"><span>包装费</span><b class="so-num">¥{{ yuanText(detail.packFee) }}</b></div>
+          <div v-if="detail.deliveryFee > 0" class="detail-row"><span>配送费</span><b class="so-num">¥{{ yuanText(detail.deliveryFee) }}</b></div>
+          <div v-if="detail.discountAmount > 0" class="detail-row detail-row--cut"><span>优惠</span><b class="so-num">-¥{{ yuanText(detail.discountAmount) }}</b></div>
           <div class="detail-row detail-row--total">
-            <span>实付</span>
-            <div class="so-price">
-              <span class="so-price__cny">¥</span>
-              <span class="so-price__int">{{ formatMoney(detail.payAmount) }}</span>
-            </div>
+            <span>{{ detail.status === "PENDING_PAYMENT" ? "待支付" : "实付款" }}</span>
+            <div class="so-price"><span class="so-price__cny">¥</span><span class="so-price__int">{{ yuanText(detail.payAmount) }}</span></div>
           </div>
         </section>
 
-        <section class="detail-section so-card">
-          <div class="detail-section__title">订单进度</div>
+        <section v-if="detail.payment" class="detail-card so-card">
+          <div class="detail-card__title">支付信息</div>
+          <div class="detail-row"><span>支付方式</span><b>{{ channelText(detail.payment.channel) }}</b></div>
+          <div class="detail-row"><span>支付单号</span><b class="so-num detail-row__dim">{{ detail.payment.paymentNo }}</b></div>
+          <div class="detail-row"><span>支付状态</span><b>{{ paymentStatusText(detail.payment.status) }}</b></div>
+          <div v-if="detail.payment.paidAt" class="detail-row"><span>支付时间</span><b class="so-num">{{ fullTime(detail.payment.paidAt) }}</b></div>
+        </section>
+
+        <section v-if="detail.refund" class="detail-card so-card">
+          <div class="detail-card__title">退款信息</div>
+          <div class="detail-row"><span>退款金额</span><b class="so-num">¥{{ yuanText(detail.refund.refundAmount) }}</b></div>
+          <div class="detail-row"><span>退款状态</span><b>{{ refundStatusText(detail.refund.status) }}</b></div>
+          <div v-if="detail.refund.reason !== ''" class="detail-row"><span>退款原因</span><b>{{ detail.refund.reason }}</b></div>
+          <div v-if="detail.refund.auditNote !== ''" class="detail-row"><span>审核备注</span><b>{{ detail.refund.auditNote }}</b></div>
+        </section>
+
+        <section class="detail-card so-card">
+          <div class="detail-card__title">订单进度</div>
           <ol class="detail-timeline">
-            <li v-for="(step, index) in timeline" :key="`${step.toStatus}-${step.createdAt}`" :class="['detail-timeline__item', { 'is-latest': index === 0 }]">
+            <li v-for="(log, index) in timeline" :key="`${log.toStatus}-${log.createdAt}`" :class="['detail-timeline__row', { 'is-latest': index === 0 }]">
               <span class="detail-timeline__dot"><i /></span>
               <div class="detail-timeline__content">
                 <div class="detail-timeline__head">
-                  <span class="detail-timeline__status">{{ statusLabel(step.toStatus) }}</span>
-                  <span class="detail-timeline__time so-num">{{ formatTimelineTime(step.createdAt) }}</span>
+                  <span>{{ statusLabel(log.toStatus) }}</span>
+                  <em class="so-num">{{ fullTime(log.createdAt) }}</em>
                 </div>
-                <div v-if="step.operatorName || step.note" class="detail-timeline__meta">
-                  <template v-if="step.operatorName">{{ step.operatorName }}</template>
-                  <template v-if="step.operatorName && step.note"> · </template>
-                  <template v-if="step.note">{{ step.note }}</template>
-                </div>
+                <p v-if="logNote(log) !== ''" class="detail-timeline__note">{{ logNote(log) }}</p>
               </div>
             </li>
           </ol>
+          <div class="detail-orderno">
+            订单号 <span class="so-num">{{ detail.orderNo }}</span>
+            <button type="button" @click="copyNo">复制</button>
+          </div>
+        </section>
+
+        <section v-if="offlineText !== ''" class="detail-offline">
+          <van-icon name="warning-o" size="13" />{{ offlineText }}
         </section>
       </div>
 
-      <div v-if="detail.status === 'PENDING_PAYMENT'" class="detail-bar">
-        <van-button plain type="default" round @click="cancel">取消订单</van-button>
-        <van-button
-          type="primary"
-          round
-          @click="router.push({ name: 'pay', params: { orderNo: detail.orderNo } })"
+      <div v-if="actions.length > 0" class="detail-bar">
+        <button
+          v-for="action in actions"
+          :key="action.key"
+          type="button"
+          :class="['detail-btn', action.primary ? 'detail-btn--primary' : 'detail-btn--ghost']"
+          @click="run(action.key)"
         >
-          去支付
-        </van-button>
+          {{ action.label }}
+        </button>
       </div>
     </template>
+
+    <van-action-sheet
+      v-model:show="reasonOpen"
+      :actions="reasonActions"
+      title="选择取消原因"
+      cancel-text="先不取消"
+      close-on-click-action
+      @select="onReason"
+    />
   </div>
 </template>
 
 <script setup lang="ts">
 import { computed, onMounted, onUnmounted, ref } from "vue";
 import { useRouter } from "vue-router";
-import { orders as ordersApi, type OrderDetail, type OrderStatus, type OrderStatusLogDto } from "@smartorder/api-client";
-import { ORDER_STATUS_LABELS, formatCountdown, formatMoney, remainingMs } from "@smartorder/shared";
+import { orders as ordersApi, reviews as reviewsApi, type OrderDetail, type OrderStatus, type OrderStatusLogDto } from "@smartorder/api-client";
+import { ORDER_STATUS_LABELS, formatCountdown, serverNowMs, type PaymentChannel, type PaymentStatus, type RefundStatus } from "@smartorder/shared";
+import ArtImage from "../components/ArtImage.vue";
+import EmptyState from "../components/EmptyState.vue";
+import { useCartStore } from "../stores/cart";
 import { useOrderStore } from "../stores/orders";
-import { reportError } from "../utils/report";
+import { cachePeek, cacheWrite } from "../utils/cache";
+import { minutesToText, maskPhone, yuanText } from "../utils/format";
+import { cancelCountdownOf, orderActions, orderHero, stepIndexOf, type OrderActionKey } from "../utils/orderActions";
+import { announceReorder, rebuildCart } from "../utils/reorder";
+import { reportError, toastText } from "../utils/report";
 
 const props = defineProps<{ orderNo: string }>();
 const router = useRouter();
 const orderStore = useOrderStore();
+const cartStore = useCartStore();
+
+const STEPS = ["提交订单", "完成支付", "档口备餐", "到店取餐", "订单完成"];
+const REASONS = ["临时有事不吃了", "下错单或选错规格", "价格不合适", "等太久了", "其他原因"];
 
 const loading = ref(true);
+const refreshing = ref(false);
 const detail = ref<OrderDetail | null>(null);
-const countdown = ref("00:00");
-let timer: number | null = null;
+const reviewed = ref(false);
+const reasonOpen = ref(false);
+const countdownText = ref("");
+let ticker: number | null = null;
+let poller: number | null = null;
+
+const reasonActions = REASONS.map((name) => ({ name }));
+
+const hero = computed(() =>
+  detail.value
+    ? orderHero(detail.value.status, detail.value, { reviewed: reviewed.value })
+    : { tone: "process" as const, icon: "clock-o", title: "", hint: "" },
+);
+const showCode = computed(() => detail.value !== null && (detail.value.pickupCode ?? "") !== "" && ["PAID", "ACCEPTED", "COOKING", "READY"].includes(detail.value.status));
+const isFlow = computed(() => detail.value !== null && stepIndexOf(detail.value.status) >= 0);
+const steps = STEPS;
+const stepIndex = computed(() => (detail.value ? stepIndexOf(detail.value.status) : -1));
+
+const actions = computed(() =>
+  detail.value === null
+    ? []
+    : orderActions(detail.value.status, { reviewed: reviewed.value, cancelOpen: cancelCountdownOf(detail.value).open }),
+);
+
+const timeline = computed(() => (detail.value ? [...detail.value.timeline].reverse() : []));
+
+const offlineText = ref("");
+
+const fulfillText = computed(() => {
+  const type = detail.value?.fulfillmentType;
+  if (type === "DELIVERY") return "宿舍配送";
+  if (type === "PICKUP") return "到店自取";
+  return "堂食";
+});
+
+const expectText = computed(() => {
+  if (!detail.value?.expectTakeAt) {
+    return "";
+  }
+  return fullTime(detail.value.expectTakeAt);
+});
+
+const cancelHint = computed(() => {
+  if (!detail.value) {
+    return "";
+  }
+  return cancelCountdownOf(detail.value).text;
+});
+
+const readyHint = computed(() => {
+  if (!detail.value) {
+    return "";
+  }
+  const ms = remaining(detail.value.pickupDeadlineAt);
+  if (ms === null) {
+    return "请尽快取餐";
+  }
+  return ms <= 0 ? "已超过预计取餐时间，请联系档口" : `请在 ${minutesToText(ms / 60_000)}内取餐，超时自动完成`;
+});
+
+const codeTip = computed(() => {
+  if (!detail.value) {
+    return "";
+  }
+  if (detail.value.status === "READY") {
+    return readyHint.value;
+  }
+  return "档口出餐后生效";
+});
+
+function remaining(iso: string | null): number | null {
+  if (iso === null) {
+    return null;
+  }
+  const value = Date.parse(iso);
+  return Number.isNaN(value) ? null : value - serverNowMs();
+}
 
 function statusLabel(status: OrderStatus): string {
   return ORDER_STATUS_LABELS[status] ?? status;
 }
 
-function statusIcon(status: OrderStatus): string {
-  switch (status) {
-    case "PENDING_PAYMENT":
-      return "balance-o";
-    case "PAID":
-      return "balance-pay";
-    case "ACCEPTED":
-      return "todo-list-o";
-    case "COOKING":
-      return "fire-o";
-    case "READY":
-      return "bag-o";
-    case "COMPLETED":
-      return "passed";
-    case "CANCELLED":
-    case "CLOSED":
-    case "REJECTED":
-      return "close";
-    case "REFUNDING":
-    case "REFUNDED":
-      return "revoke";
-    default:
-      return "clock-o";
+function fullTime(iso: string): string {
+  if (Number.isNaN(Date.parse(iso))) {
+    return iso;
   }
-}
-
-function formatTimelineTime(createdAt: string): string {
-  const date = new Date(createdAt);
-  if (Number.isNaN(date.getTime())) {
-    return createdAt;
-  }
-  const pad = (value: number): string => String(value).padStart(2, "0");
+  const date = new Date(iso);
+  const pad = (input: number): string => String(input).padStart(2, "0");
   return `${pad(date.getMonth() + 1)}-${pad(date.getDate())} ${pad(date.getHours())}:${pad(date.getMinutes())}`;
 }
 
-function hideBrokenImage(event: Event): void {
-  (event.target as HTMLImageElement).style.display = "none";
+function channelText(channel: PaymentChannel): string {
+  if (channel === "MOCK") return "模拟支付";
+  if (channel === "WXPAY_H5") return "微信支付";
+  if (channel === "ALIPAY_H5") return "支付宝";
+  return channel;
 }
 
-const timeline = computed<OrderStatusLogDto[]>(() => {
-  if (!detail.value) {
-    return [];
-  }
-  return [...detail.value.timeline].sort((a, b) => Date.parse(b.createdAt) - Date.parse(a.createdAt));
-});
+function paymentStatusText(status: PaymentStatus): string {
+  return { PENDING: "待发起", PAYING: "支付中", SUCCESS: "已支付", FAILED: "支付失败", CLOSED: "已关闭" }[status] ?? status;
+}
 
-function tickCountdown(): void {
-  if (!detail.value || !detail.value.expireAt) {
-    countdown.value = "00:00";
+function refundStatusText(status: RefundStatus): string {
+  return { PENDING: "待审核", APPROVED: "审核通过", PROCESSING: "处理中", SUCCEEDED: "已退款", FAILED: "退款失败", REJECTED: "审核驳回" }[status] ?? status;
+}
+
+function logNote(log: OrderStatusLogDto): string {
+  const parts = [log.operatorName, log.note].filter((part) => part !== "");
+  return parts.join(" · ");
+}
+
+function tick(): void {
+  if (!detail.value || detail.value.status !== "PENDING_PAYMENT") {
     return;
   }
-  const ms = remainingMs(detail.value.expireAt);
-  countdown.value = ms === null || ms <= 0 ? "已超时" : formatCountdown(ms);
-}
-
-async function load(): Promise<void> {
-  const next = await orderStore.refreshDetail(props.orderNo);
-  if (next) {
-    detail.value = next;
-    tickCountdown();
+  const ms = remaining(detail.value.expireAt);
+  if (ms === null) {
+    countdownText.value = "";
+    return;
+  }
+  countdownText.value = ms <= 0 ? "支付已超时，订单即将自动关闭" : `请在 ${formatCountdown(ms)} 内完成支付，超时订单自动关闭`;
+  if (ms <= 0) {
+    void load(false);
   }
 }
 
-async function cancel(): Promise<void> {
+async function load(showSkeleton: boolean): Promise<void> {
+  if (showSkeleton) {
+    refreshing.value = true;
+  }
+  try {
+    const next = await ordersApi.detail(props.orderNo);
+    detail.value = next;
+    orderStore.upsertDetail(next);
+    cacheWrite(`order.${props.orderNo}`, next, 24 * 60 * 60_000);
+    offlineText.value = "";
+    if (next.status === "COMPLETED") {
+      reviewed.value = (await reviewsApi.byOrder(next.orderNo)) !== null;
+    }
+    tick();
+  } catch (error) {
+    if (detail.value === null) {
+      const cached = cachePeek<OrderDetail>(`order.${props.orderNo}`);
+      if (cached !== null) {
+        detail.value = cached;
+        offlineText.value = "现在是离线内容，取餐码依然可以给店员看";
+        tick();
+      } else {
+        offlineText.value = "网络没连上，稍后再试一次";
+      }
+    } else {
+      reportError(error);
+    }
+  } finally {
+    loading.value = false;
+    refreshing.value = false;
+  }
+}
+
+function reload(): void {
+  void load(true);
+}
+
+function copyNo(): void {
+  if (!detail.value) {
+    return;
+  }
+  void navigator.clipboard?.writeText(detail.value.orderNo).then(
+    () => toastText("订单号已复制"),
+    () => toastText("复制失败，可以长按选中订单号"),
+  );
+}
+
+function run(action: OrderActionKey): void {
+  if (!detail.value) {
+    return;
+  }
+  if (action === "pay") {
+    void router.push({ name: "pay", params: { orderNo: detail.value.orderNo } });
+    return;
+  }
+  if (action === "review") {
+    void router.push({ name: "review", params: { orderNo: detail.value.orderNo } });
+    return;
+  }
+  if (action === "cancel") {
+    reasonOpen.value = true;
+    return;
+  }
+  void doReorder();
+}
+
+async function doReorder(): Promise<void> {
   if (!detail.value) {
     return;
   }
   try {
-    const next = await ordersApi.cancel(detail.value.orderNo, "用户主动取消");
+    const result = await rebuildCart(detail.value.merchantId, detail.value.items);
+    await cartStore.refresh();
+    announceReorder(result);
+    if (result.added > 0) {
+      void router.push({ name: "cart" });
+    }
+  } catch (error) {
+    reportError(error);
+  }
+}
+
+async function onReason(action: { name: string }): Promise<void> {
+  if (!detail.value) {
+    return;
+  }
+  try {
+    const next = await ordersApi.cancel(detail.value.orderNo, action.name);
     detail.value = next;
     orderStore.upsertDetail(next);
+    cacheWrite(`order.${props.orderNo}`, next, 24 * 60 * 60_000);
+    toastText(next.status === "CANCELLED" ? "订单已取消" : "已提交，稍后刷新查看");
   } catch (error) {
     reportError(error);
   }
 }
 
 onMounted(async () => {
-  try {
-    await load();
-    timer = window.setInterval(tickCountdown, 1000);
-  } finally {
-    loading.value = false;
+  const cached = cachePeek<OrderDetail>(`order.${props.orderNo}`);
+  if (cached !== null) {
+    detail.value = cached;
+    offlineText.value = "先显示上次的内容";
   }
+  await load(false);
+  ticker = window.setInterval(tick, 1000);
+  poller = window.setInterval(() => {
+    if (document.visibilityState === "visible" && detail.value && ["PENDING_PAYMENT", "PAID", "ACCEPTED", "COOKING"].includes(detail.value.status)) {
+      void load(false);
+    }
+  }, 15_000);
 });
 
 onUnmounted(() => {
-  if (timer !== null) {
-    window.clearInterval(timer);
+  if (ticker !== null) {
+    window.clearInterval(ticker);
+  }
+  if (poller !== null) {
+    window.clearInterval(poller);
   }
 });
 </script>
@@ -244,6 +438,7 @@ onUnmounted(() => {
 <style scoped>
 .detail-page {
   background: var(--page-bg);
+  padding-bottom: calc(5.5rem + env(safe-area-inset-bottom));
 }
 
 .detail-skeleton {
@@ -251,111 +446,242 @@ onUnmounted(() => {
   padding: 1rem;
 }
 
+.detail-refresh {
+  display: grid;
+  place-items: center;
+  width: 32px;
+  height: 32px;
+  color: var(--content-meta);
+  background: transparent;
+  border: 0;
+}
+
+.is-spinning {
+  animation: detail-spin 0.9s linear infinite;
+}
+
+@keyframes detail-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
 .detail-hero {
-  display: flex;
-  align-items: flex-start;
-  gap: 0.8rem;
-  padding: 1.1rem 1.15rem 1.35rem;
+  padding: 0.9rem 1.1rem 1.15rem;
   color: #fff;
-  background:
-    radial-gradient(circle at 95% 0%, rgba(255, 213, 153, 0.18), transparent 42%),
-    linear-gradient(145deg, #173f34 0%, #21634f 58%, #2d7c60 100%);
-  border-radius: 0 0 24px 24px;
+  border-radius: 0 0 22px 22px;
+}
+
+.detail-hero--process {
+  background: linear-gradient(145deg, #173f34, #2d7c60);
+}
+
+.detail-hero--ready {
+  background: linear-gradient(145deg, #1d5c40, #3f9a6d);
+}
+
+.detail-hero--done {
+  background: linear-gradient(145deg, #2a4a3d, #4c7a63);
+}
+
+.detail-hero--warn {
+  background: linear-gradient(145deg, #8a5a18, #c8892b);
+}
+
+.detail-hero--stop {
+  background: linear-gradient(145deg, #4a4f52, #747b80);
+}
+
+.detail-hero__top {
+  display: flex;
+  align-items: center;
+  gap: 0.7rem;
 }
 
 .detail-hero__icon {
   display: grid;
   place-items: center;
-  width: 46px;
-  height: 46px;
+  width: 40px;
+  height: 40px;
   flex: none;
-  color: #ffe9c9;
-  background: rgba(255, 255, 255, 0.14);
-  border: 1px solid rgba(255, 255, 255, 0.22);
-  border-radius: 15px;
-  backdrop-filter: blur(6px);
+  background: rgba(255, 255, 255, 0.16);
+  border-radius: 13px;
 }
 
-.detail-hero__body {
-  flex: 1;
+.detail-hero__text {
   min-width: 0;
-  padding-top: 0.15rem;
 }
 
-.detail-hero__status {
-  font-size: 1.1rem;
-  line-height: 1.3;
+.detail-hero__text h2 {
+  margin: 0;
+  font-size: 1.08rem;
   font-weight: var(--font-weight-bold);
   letter-spacing: -0.01em;
 }
 
-.detail-hero__sub {
-  margin-top: 0.3rem;
-  color: rgba(255, 255, 255, 0.72);
-  font-size: 0.72rem;
+.detail-hero__text p {
+  margin: 0.22rem 0 0;
+  color: rgba(255, 255, 255, 0.76);
+  font-size: 0.74rem;
   line-height: 1.5;
 }
 
-.detail-hero__sub b {
-  color: #f9d8a7;
-  font-weight: var(--font-weight-bold);
+.detail-code {
+  margin-top: 0.95rem;
+  padding: 0.85rem 1rem 0.9rem;
+  text-align: center;
+  background: rgba(255, 255, 255, 0.13);
+  border: 1px dashed rgba(255, 255, 255, 0.34);
+  border-radius: 16px;
 }
 
-.detail-hero__code {
+.detail-code__label {
+  color: rgba(255, 255, 255, 0.7);
+  font-size: 0.66rem;
+  letter-spacing: 0.16em;
+}
+
+.detail-code__value {
+  margin-top: 0.15rem;
+  font-family: var(--font-num);
+  font-size: 2.4rem;
+  font-weight: var(--font-weight-bold);
+  letter-spacing: 0.1em;
+  line-height: 1.2;
+}
+
+.detail-code__tip {
+  color: rgba(255, 255, 255, 0.7);
+  font-size: 0.68rem;
+}
+
+.detail-steps {
   display: flex;
+  margin: 1.05rem 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.detail-steps__item {
+  position: relative;
+  display: flex;
+  flex: 1;
   flex-direction: column;
   align-items: center;
-  gap: 0.15rem;
-  flex: none;
-  padding: 0.55rem 0.9rem;
-  background: rgba(255, 255, 255, 0.12);
-  border: 1px dashed rgba(255, 255, 255, 0.35);
-  border-radius: 14px;
+  gap: 0.3rem;
+  color: rgba(255, 255, 255, 0.5);
 }
 
-.detail-hero__code-label {
-  color: rgba(255, 255, 255, 0.65);
+.detail-steps__item::before {
+  content: "";
+  position: absolute;
+  top: 5px;
+  left: -50%;
+  width: 100%;
+  height: 2px;
+  background: rgba(255, 255, 255, 0.22);
+}
+
+.detail-steps__item:first-child::before {
+  display: none;
+}
+
+.detail-steps__dot {
+  width: 11px;
+  height: 11px;
+  background: rgba(255, 255, 255, 0.28);
+  border-radius: 50%;
+}
+
+.detail-steps__label {
   font-size: 0.6rem;
-  letter-spacing: 0.12em;
+  white-space: nowrap;
 }
 
-.detail-hero__code-value.so-code {
+.detail-steps__item.is-done {
+  color: rgba(255, 255, 255, 0.86);
+}
+
+.detail-steps__item.is-done::before {
+  background: rgba(255, 255, 255, 0.6);
+}
+
+.detail-steps__item.is-done .detail-steps__dot {
+  background: #fff;
+}
+
+.detail-steps__item.is-current .detail-steps__dot {
+  box-shadow: 0 0 0 4px rgba(255, 255, 255, 0.24);
+}
+
+.detail-steps__item.is-current .detail-steps__label {
   color: #fff;
-  font-size: 1.9rem;
-  letter-spacing: 0.12em;
-  line-height: 1.15;
+  font-weight: var(--font-weight-bold);
 }
 
 .detail-body {
-  padding: 0.9rem 1rem 0.75rem;
+  padding: 0.8rem 0.95rem 0.5rem;
 }
 
-.detail-section {
-  padding: 0.95rem 0.95rem 0.8rem;
-  margin-bottom: 0.75rem;
+.detail-notice {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.62rem 0.8rem;
+  margin-bottom: 0.7rem;
+  color: var(--content-meta);
+  background: var(--card-bg);
+  border-radius: 12px;
+  font-size: 0.74rem;
 }
 
-.detail-section__title {
+.detail-notice--warn {
+  color: #9b6a2a;
+  background: var(--warn-soft);
+}
+
+.detail-notice--ok {
+  color: var(--primary-dark);
+  background: var(--primary-soft);
+}
+
+.detail-card {
+  padding: 0.9rem 0.95rem 0.8rem;
+  margin-bottom: 0.7rem;
+}
+
+.detail-card__title {
   display: flex;
   align-items: center;
   gap: 0.45rem;
+  padding-bottom: 0.6rem;
+  margin-bottom: 0.45rem;
   color: var(--deep-text);
-  font-size: 0.95rem;
+  font-size: 0.92rem;
   font-weight: var(--font-weight-bold);
-  padding-bottom: 0.65rem;
-  margin-bottom: 0.55rem;
   border-bottom: 1px solid var(--line-divider);
 }
 
-.detail-section__badge {
+.detail-card__badge {
   display: grid;
   place-items: center;
-  width: 24px;
-  height: 24px;
-  flex: none;
+  width: 23px;
+  height: 23px;
   color: var(--accent-green);
   background: var(--accent-green-soft);
   border-radius: 8px;
+}
+
+.detail-card__link {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.15rem;
+  padding: 0;
+  color: var(--deep-text);
+  background: transparent;
+  border: 0;
+  font-size: 0.92rem;
+  font-weight: var(--font-weight-bold);
 }
 
 .detail-row {
@@ -363,56 +689,54 @@ onUnmounted(() => {
   align-items: flex-start;
   justify-content: space-between;
   gap: 1rem;
-  padding: 0.34rem 0;
+  padding: 0.32rem 0;
   color: var(--content-meta);
   font-size: 0.8rem;
 }
 
-.detail-row > span:last-child,
-.detail-row .detail-row__value {
-  color: var(--deep-text);
-  text-align: right;
+.detail-row b {
   min-width: 0;
+  color: var(--deep-text);
+  font-weight: var(--font-weight-medium);
+  text-align: right;
 }
 
-.detail-row__value--remark {
-  max-width: 16rem;
+.detail-row__wrap {
+  max-width: 15rem;
   word-break: break-all;
 }
 
-.detail-row__value--dim {
-  color: var(--content-meta);
+.detail-row__dim {
+  color: var(--content-meta) !important;
+  font-weight: var(--font-regular) !important;
   font-size: 0.72rem;
 }
 
-.detail-row--discount {
-  color: var(--caution);
-}
-
-.detail-row--discount > span:last-child {
+.detail-row--cut span,
+.detail-row--cut b {
   color: var(--caution);
 }
 
 .detail-row--total {
   align-items: center;
-  padding-top: 0.65rem;
+  padding-top: 0.6rem;
   margin-top: 0.3rem;
   border-top: 1px dashed var(--line-divider);
   color: var(--deep-text);
   font-weight: var(--font-weight-bold);
 }
 
-.so-divider {
-  margin: 0.55rem 0 0.35rem;
+.detail-row--total b {
+  font-weight: var(--font-weight-bold);
 }
 
 .detail-item {
   display: grid;
-  grid-template-columns: 56px minmax(0, 1fr) auto;
-  gap: 0.65rem;
-  padding: 0.55rem 0;
-  border-bottom: 1px solid var(--line-divider);
+  grid-template-columns: 52px minmax(0, 1fr) auto;
+  gap: 0.6rem;
   align-items: center;
+  padding: 0.5rem 0;
+  border-bottom: 1px solid var(--line-divider);
 }
 
 .detail-item:last-of-type {
@@ -420,28 +744,8 @@ onUnmounted(() => {
 }
 
 .detail-item__image {
-  position: relative;
-  width: 56px;
-  height: 56px;
-  overflow: hidden;
-  display: grid;
-  place-items: center;
-  background: var(--muted-soft);
-  border-radius: 13px;
-}
-
-.detail-item__image img {
-  width: 100%;
-  height: 100%;
-  object-fit: cover;
-}
-
-.detail-item__placeholder {
-  display: grid;
-  place-items: center;
-  width: 100%;
-  height: 100%;
-  color: var(--muted);
+  width: 52px;
+  height: 52px;
 }
 
 .detail-item__body {
@@ -451,7 +755,7 @@ onUnmounted(() => {
 .detail-item__name {
   overflow: hidden;
   color: var(--deep-text);
-  font-size: 0.88rem;
+  font-size: 0.86rem;
   font-weight: var(--font-weight-medium);
   white-space: nowrap;
   text-overflow: ellipsis;
@@ -461,8 +765,8 @@ onUnmounted(() => {
   display: inline-block;
   max-width: 100%;
   overflow: hidden;
-  margin-top: 0.2rem;
-  padding: 0.1rem 0.4rem;
+  margin-top: 0.18rem;
+  padding: 0.08rem 0.4rem;
   color: var(--content-meta);
   background: var(--btn-regular-bg);
   border-radius: 5px;
@@ -473,62 +777,57 @@ onUnmounted(() => {
 
 .detail-item__right {
   display: flex;
+  flex: none;
   flex-direction: column;
   align-items: flex-end;
-  gap: 0.15rem;
-  flex: none;
-}
-
-.detail-item__amount {
+  gap: 0.12rem;
   color: var(--deep-text);
-  font-size: 0.82rem;
+  font-size: 0.8rem;
   font-weight: var(--font-weight-semibold);
 }
 
 .detail-item__qty {
   color: var(--content-meta);
   font-size: 0.66rem;
+  font-weight: var(--font-regular);
 }
 
 .detail-timeline {
+  margin: 0.15rem 0 0;
+  padding: 0;
   list-style: none;
-  margin: 0;
-  padding: 0.25rem 0 0;
 }
 
-.detail-timeline__item {
+.detail-timeline__row {
   position: relative;
   display: grid;
-  grid-template-columns: 20px minmax(0, 1fr);
-  gap: 0.65rem;
-  padding-bottom: 1.1rem;
+  grid-template-columns: 18px minmax(0, 1fr);
+  gap: 0.6rem;
+  padding-bottom: 0.95rem;
 }
 
-.detail-timeline__item:last-child {
+.detail-timeline__row:last-child {
   padding-bottom: 0.1rem;
 }
 
-.detail-timeline__item::before {
+.detail-timeline__row::before {
   content: "";
   position: absolute;
-  left: 9px;
-  top: 18px;
+  top: 16px;
+  left: 8px;
   bottom: 2px;
   width: 2px;
   background: var(--line-divider);
-  border-radius: 2px;
 }
 
-.detail-timeline__item:last-child::before {
+.detail-timeline__row:last-child::before {
   display: none;
 }
 
 .detail-timeline__dot {
   display: grid;
   place-items: center;
-  width: 20px;
-  height: 20px;
-  margin-top: 0.05rem;
+  width: 18px;
 }
 
 .detail-timeline__dot i {
@@ -536,10 +835,9 @@ onUnmounted(() => {
   height: 8px;
   background: var(--muted);
   border-radius: 50%;
-  box-shadow: 0 0 0 3px var(--card-bg);
 }
 
-.detail-timeline__item.is-latest .detail-timeline__dot i {
+.detail-timeline__row.is-latest .detail-timeline__dot i {
   width: 10px;
   height: 10px;
   background: var(--primary);
@@ -555,64 +853,95 @@ onUnmounted(() => {
   align-items: baseline;
   justify-content: space-between;
   gap: 0.5rem;
+  color: var(--deep-text);
+  font-size: 0.83rem;
 }
 
-.detail-timeline__status {
-  color: var(--deep-text);
-  font-size: 0.85rem;
+.detail-timeline__row.is-latest .detail-timeline__head {
+  color: var(--primary);
   font-weight: var(--font-weight-semibold);
 }
 
-.detail-timeline__item.is-latest .detail-timeline__status {
-  color: var(--primary);
-}
-
-.detail-timeline__time {
+.detail-timeline__head em {
   flex: none;
   color: var(--muted);
   font-size: 0.66rem;
+  font-style: normal;
 }
 
-.detail-timeline__meta {
-  margin-top: 0.18rem;
+.detail-timeline__note {
+  margin: 0.16rem 0 0;
   color: var(--content-meta);
   font-size: 0.7rem;
   line-height: 1.45;
 }
 
+.detail-orderno {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding-top: 0.6rem;
+  margin-top: 0.5rem;
+  color: var(--muted);
+  font-size: 0.7rem;
+  border-top: 1px dashed var(--line-divider);
+}
+
+.detail-orderno button {
+  margin-left: auto;
+  padding: 0.15rem 0.6rem;
+  color: var(--content-meta);
+  background: transparent;
+  border: 1px solid var(--line-divider);
+  border-radius: 999px;
+  font-size: 0.68rem;
+}
+
+.detail-offline {
+  display: flex;
+  align-items: center;
+  gap: 0.3rem;
+  padding: 0.5rem 0.2rem;
+  color: var(--caution);
+  font-size: 0.7rem;
+}
+
 .detail-bar {
   position: fixed;
   left: 50%;
-  transform: translateX(-50%);
   bottom: 0;
-  width: 100%;
-  max-width: var(--app-max);
   display: flex;
   gap: 0.6rem;
-  padding: 0.7rem 1rem;
-  padding-bottom: calc(0.7rem + env(safe-area-inset-bottom));
+  width: 100%;
+  max-width: var(--app-max);
+  transform: translateX(-50%);
+  padding: 0.7rem 0.95rem calc(0.7rem + env(safe-area-inset-bottom));
   background: var(--float-panel-bg);
   border-top: 1px solid var(--line-divider);
   box-shadow: 0 -8px 28px rgba(36, 48, 38, 0.08);
   z-index: 20;
 }
 
-.detail-bar .van-button {
+.detail-btn {
   flex: 1;
-  min-height: 44px;
+  height: var(--btn-h);
+  border: 0;
+  border-radius: var(--btn-radius);
+  font-size: var(--fs-btn);
+  font-weight: var(--font-weight-bold);
 }
 
-@media (max-width: 360px) {
-  .detail-hero {
-    flex-wrap: wrap;
-    gap: 0.65rem;
-  }
+.detail-btn--ghost {
+  color: var(--content-meta);
+  background: var(--btn-regular-bg);
+}
 
-  .detail-hero__code {
-    width: 100%;
-    flex-direction: row;
-    align-items: baseline;
-    justify-content: space-between;
-  }
+.detail-btn--primary {
+  color: #fff;
+  background: linear-gradient(135deg, var(--primary), var(--primary-dark));
+}
+
+.detail-btn:active {
+  opacity: 0.85;
 }
 </style>

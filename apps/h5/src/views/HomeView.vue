@@ -11,7 +11,7 @@
         </div>
         <button class="home-area" type="button" @click="areaVisible = true">
           <van-icon name="location-o" />
-          <span>{{ campus.area === "" ? "选择校区" : campus.area }}</span>
+          <span>{{ campus.area === "" ? "全部校区" : campus.area }}</span>
           <van-icon name="arrow-down" class="home-area__arrow" />
         </button>
       </div>
@@ -19,7 +19,7 @@
       <div class="home-hero__content">
         <div class="home-hero__eyebrow"><span /> 今日份好胃口已送达</div>
         <h1>今天吃点啥？</h1>
-        <p>宝藏档口已就位，热乎美味不用等</p>
+        <p>{{ heroSub }}</p>
       </div>
 
       <svg class="home-hero__illustration" viewBox="0 0 180 150" fill="none" aria-hidden="true">
@@ -38,11 +38,35 @@
     </header>
 
     <main class="home-content">
-      <section v-if="orders.active.length > 0" class="so-section home-section home-section--orders">
+      <div class="home-tools">
+        <router-link class="home-search" :to="{ name: 'search' }">
+          <van-icon name="search" size="16" />
+          <span :class="{ 'is-ghost': keyword === '' }">{{ keyword === "" ? "搜菜品 / 档口，支持拼音首字母" : keyword }}</span>
+        </router-link>
+        <button type="button" class="home-scan" @click="scanVisible = true">
+          <van-icon name="scan" size="16" />
+          <span>扫码</span>
+        </button>
+      </div>
+
+      <div v-if="dining.scannedHere" class="home-table">
+        <van-icon name="bag-o" size="14" />
+        <span>{{ scannedName }} · 桌号 {{ dining.tableNo }}</span>
+        <button type="button" @click="dining.unbind()">解除</button>
+      </div>
+
+      <BannerSwiper v-if="slides.length > 0" class="home-banner" :items="slides" @select="onSlide" />
+
+      <div v-if="offline" class="home-offline">
+        <van-icon name="warning-o" />
+        网络不稳定，正在展示上次缓存的档口列表
+      </div>
+
+      <section v-if="orders.active.length > 0" class="so-section home-section">
         <div class="so-section__head">
           <div>
             <div class="so-section__title">美味正在路上</div>
-            <div class="home-section__sub">订单进度实时更新</div>
+            <div class="home-section__sub">出餐进度实时提醒</div>
           </div>
           <router-link class="home-more" :to="{ name: 'orders' }">
             全部订单 <van-icon name="arrow" />
@@ -55,13 +79,14 @@
             class="home-active-card so-card"
             :to="{ name: 'order', params: { orderNo: order.orderNo } }"
           >
-            <span class="home-active-card__icon"><van-icon name="orders-o" size="22" /></span>
+            <span class="home-active-card__icon"><van-icon name="orders-o" size="21" /></span>
             <div class="home-active-card__left">
               <div class="home-active-card__merchant">{{ order.merchantName }}</div>
               <div class="home-active-card__meta">
-                <van-tag :type="statusTone(order.status)" plain>{{ statusLabel(order.status) }}</van-tag>
+                <StatusTag :label="statusLabel(order.status)" :tone="statusTone(order.status)" />
                 <span v-if="order.pickupCode" class="so-num home-active-card__code">取餐码 {{ order.pickupCode }}</span>
-                <span v-else class="home-active-card__waiting">等待分配取餐码</span>
+                <span v-else-if="payRemain(order) !== ''" class="home-active-card__waiting">剩 {{ payRemain(order) }} 自动关闭</span>
+                <span v-else class="home-active-card__waiting">{{ order.pickupPointName }}</span>
               </div>
             </div>
             <div class="home-active-card__right">
@@ -79,60 +104,69 @@
         <div class="so-section__head">
           <div>
             <div class="so-section__title">附近好店</div>
-            <div class="home-section__sub">认真干饭，从这里开始</div>
+            <div class="home-section__sub">{{ openMerchants.length }} 家在营 · {{ closedMerchants.length }} 家休息</div>
           </div>
-          <div class="home-count">{{ merchants.length }} 家营业</div>
+          <button type="button" class="home-count" @click="load">刷新</button>
         </div>
 
-        <van-skeleton v-if="loading && merchants.length === 0" title :row="3" class="home-skeleton so-card" />
-
-        <van-empty v-else-if="merchants.length === 0" description="当前校区暂无营业档口">
-          <van-button type="primary" size="small" @click="areaVisible = true">切换校区</van-button>
-        </van-empty>
-
-        <div v-else class="home-merchant-list">
-          <router-link
-            v-for="merchant in merchants"
-            :key="merchant.merchantId"
-            class="home-merchant-card so-card"
-            :to="{ name: 'menu', params: { id: merchant.merchantId } }"
+        <div v-if="categories.length > 1" class="home-chips">
+          <button
+            v-for="item in categories"
+            :key="item.name"
+            type="button"
+            :class="['home-chip', { 'is-on': category === item.name }]"
+            @click="category = category === item.name ? '' : item.name"
           >
-            <div class="home-merchant-card__logo">
-              <span>{{ merchant.name.slice(0, 1) }}</span>
-              <img
-                v-if="merchant.logoUrl !== ''"
-                :src="merchant.logoUrl"
-                :alt="merchant.name"
-                loading="lazy"
-                @error="hideBrokenImage"
+            {{ item.name }}
+            <i class="so-num">{{ item.count }}</i>
+          </button>
+        </div>
+
+        <van-skeleton v-if="loading && merchants.length === 0" title :row="4" class="home-skeleton so-card" />
+
+        <EmptyState
+          v-else-if="merchants.length === 0"
+          icon="shop-o"
+          title="这个校区还没有营业档口"
+          description="换个校区看看，或者点右上角刷新重试"
+          :action-text="areaOptions.length > 0 ? '切换校区' : '重新加载'"
+          @action="onEmptyAction"
+        />
+
+        <template v-else>
+          <div v-if="visibleOpen.length > 0" class="home-merchant-list">
+            <MerchantCard
+              v-for="merchant in visibleOpen"
+              :key="merchant.merchantId"
+              :merchant="merchant"
+              :cart-count="cart.quantityOfMerchant(merchant.merchantId)"
+            />
+          </div>
+
+          <EmptyState
+            v-else
+            icon="search-o"
+            :title="category === '' ? '暂无营业中的档口' : `「${category}」暂时没有营业档口`"
+            description="看看别的分类，热乎美味不缺这一家"
+            action-text="清空筛选"
+            @action="category = ''"
+          />
+
+          <template v-if="visibleClosed.length > 0">
+            <button type="button" class="home-fold" @click="closedOpen = !closedOpen">
+              <van-icon :name="closedOpen ? 'arrow-up' : 'arrow-down'" size="12" />
+              {{ visibleClosed.length }} 家休息中的档口
+            </button>
+            <div v-if="closedOpen" class="home-merchant-list home-merchant-list--closed">
+              <MerchantCard
+                v-for="merchant in visibleClosed"
+                :key="merchant.merchantId"
+                :merchant="merchant"
+                :cart-count="cart.quantityOfMerchant(merchant.merchantId)"
               />
             </div>
-            <div class="home-merchant-card__body">
-              <div class="home-merchant-card__heading">
-                <div class="home-merchant-card__name">{{ merchant.name }}</div>
-                <span :class="['home-merchant-card__status', { 'is-closed': !merchant.open }]">
-                  <i />{{ merchant.open ? "营业中" : "休息中" }}
-                </span>
-              </div>
-              <div class="home-merchant-card__description">{{ merchant.description || merchant.categoryName }}</div>
-              <div class="home-merchant-card__meta">
-                <span class="home-merchant-card__category">{{ merchant.categoryName }}</span>
-                <span class="home-merchant-card__rating">
-                  <van-icon name="star" /> {{ (merchant.ratingScore / 100).toFixed(1) }}
-                </span>
-                <span class="home-merchant-card__pickup"><van-icon name="location-o" /> {{ merchant.pickupPointName }}</span>
-              </div>
-              <div class="home-merchant-card__stats">
-                <span>月售 <b class="so-num">{{ merchant.monthSold }}</b></span>
-                <i />
-                <span>¥{{ formatMoney(merchant.minOrderAmount) }} 起送</span>
-                <i />
-                <span>约 <b class="so-num">{{ merchant.avgPrepareMinutes }}</b> 分钟</span>
-                <van-icon name="arrow" class="home-merchant-card__arrow" />
-              </div>
-            </div>
-          </router-link>
-        </div>
+          </template>
+        </template>
       </section>
     </main>
 
@@ -142,7 +176,7 @@
         <div class="area-sheet__sub">切换后会为你展示对应校区的营业档口</div>
         <van-picker
           :columns="areaColumns"
-          :model-value="campus.area === '' ? undefined : [campus.area]"
+          :model-value="campus.area === '' ? [] : [campus.area]"
           confirm-button-text="确定"
           cancel-button-text="取消"
           @confirm="onAreaConfirm"
@@ -150,51 +184,129 @@
         />
       </div>
     </van-popup>
+
+    <ScanSheet v-model:show="scanVisible" :merchants="merchants" />
   </div>
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, ref } from "vue";
+import { computed, onActivated, onBeforeUnmount, onMounted, ref, watch } from "vue";
+import { useRoute, useRouter } from "vue-router";
 import { catalog, type MerchantSummary, type OrderStatus } from "@smartorder/api-client";
-import { ORDER_STATUS_LABELS, ORDER_STATUS_TONES, formatMoney } from "@smartorder/shared";
+import {
+  formatCountdown,
+  formatMoney,
+  ORDER_STATUS_LABELS,
+  ORDER_STATUS_TONES,
+  remainingMs,
+  type Tone,
+} from "@smartorder/shared";
+import BannerSwiper from "../components/BannerSwiper.vue";
+import EmptyState from "../components/EmptyState.vue";
+import MerchantCard from "../components/MerchantCard.vue";
+import ScanSheet from "../components/ScanSheet.vue";
+import StatusTag from "../components/StatusTag.vue";
+import { slidesFromMerchants, type BannerSlide } from "../utils/banner";
 import { useCampusStore } from "../stores/campus";
+import { useCartStore } from "../stores/cart";
+import { parseScanTarget, useDiningStore } from "../stores/dining";
 import { useOrderStore } from "../stores/orders";
-import { reportError } from "../utils/report";
+import { swr } from "../utils/cache";
+import { lastKeyword } from "../utils/search";
+import { businessOf } from "../utils/status";
+import { toastText } from "../utils/report";
 
+defineOptions({ name: "HomeView" });
+
+const route = useRoute();
+const router = useRouter();
 const campus = useCampusStore();
+const cart = useCartStore();
+const dining = useDiningStore();
 const orders = useOrderStore();
 
 const merchants = ref<MerchantSummary[]>([]);
 const loading = ref(false);
+const offline = ref(false);
 const areaVisible = ref(false);
+const scanVisible = ref(false);
+const closedOpen = ref(false);
+const category = ref("");
 const areaOptions = ref<string[]>([]);
+const keyword = ref(lastKeyword());
+const heartbeat = ref(0);
 
-const areaColumns = computed(() => areaOptions.value.map((text) => ({ text, value: text })));
+let clock: number | undefined;
+
+const areaColumns = computed(() => [
+  { text: "全部校区", value: "" },
+  ...areaOptions.value.map((text) => ({ text, value: text })),
+]);
+
+const openMerchants = computed(() => merchants.value.filter((merchant) => businessOf(merchant).saleable));
+const closedMerchants = computed(() => merchants.value.filter((merchant) => !businessOf(merchant).saleable));
+
+function inCategory(merchant: MerchantSummary): boolean {
+  return category.value === "" || merchant.categoryName === category.value;
+}
+
+const visibleOpen = computed(() => openMerchants.value.filter(inCategory));
+const visibleClosed = computed(() => closedMerchants.value.filter(inCategory));
+
+const categories = computed(() => {
+  const map = new Map<string, number>();
+  for (const merchant of merchants.value) {
+    map.set(merchant.categoryName, (map.get(merchant.categoryName) ?? 0) + 1);
+  }
+  return Array.from(map.entries())
+    .map(([name, count]) => ({ name, count }))
+    .sort((a, b) => b.count - a.count);
+});
+
+const slides = computed(() => slidesFromMerchants(merchants.value));
+
+const scannedName = computed(
+  () => merchants.value.find((row) => row.merchantId === dining.scannedMerchantId)?.name ?? "已扫码门店",
+);
+
+const heroSub = computed(() => {
+  const open = openMerchants.value.length;
+  return open === 0 ? "此刻都在休息，先踩个点明天来" : `${open} 家档口正在出餐，热乎美味不用等`;
+});
 
 function statusLabel(status: OrderStatus): string {
   return ORDER_STATUS_LABELS[status] ?? status;
 }
 
-function statusTone(status: OrderStatus): "primary" | "success" | "warning" | "danger" | "default" {
-  const tone = ORDER_STATUS_TONES[status] ?? "default";
-  if (tone === "ok") return "success";
-  if (tone === "warn" || tone === "caution") return "warning";
-  if (tone === "danger") return "danger";
-  if (tone === "info" || tone === "primary") return "primary";
-  return "default";
+function statusTone(status: OrderStatus): Tone {
+  return ORDER_STATUS_TONES[status] ?? "muted";
 }
 
-function hideBrokenImage(event: Event): void {
-  (event.target as HTMLImageElement).style.display = "none";
+function payRemain(order: { status: OrderStatus; expireAt: string | null }): string {
+  if (order.status !== "PENDING_PAYMENT") {
+    return "";
+  }
+  void heartbeat.value;
+  const left = remainingMs(order.expireAt);
+  return left === null || left <= 0 ? "" : formatCountdown(left);
 }
 
-async function loadMerchants(): Promise<void> {
+async function load(): Promise<void> {
   loading.value = true;
   try {
-    const list = await catalog.merchants(campus.area === "" ? undefined : campus.area, true);
-    merchants.value = list;
-  } catch (error) {
-    reportError(error);
+    const result = await swr(
+      `merchants:${campus.area}`,
+      () => catalog.merchants(campus.area === "" ? undefined : campus.area, false),
+      {
+        ttlMs: 120_000,
+        onUpdate: (data) => {
+          merchants.value = data;
+        },
+      },
+    );
+    offline.value = result.fromCache;
+  } catch {
+    toastText("档口列表加载失败，稍后再试");
   } finally {
     loading.value = false;
   }
@@ -203,27 +315,73 @@ async function loadMerchants(): Promise<void> {
 async function loadAreas(): Promise<void> {
   try {
     const points = await catalog.pickupPoints();
-    const set = new Set<string>();
-    for (const point of points) {
-      set.add(point.campusArea);
-    }
-    areaOptions.value = Array.from(set);
-  } catch (error) {
-    reportError(error);
+    areaOptions.value = Array.from(new Set(points.map((point) => point.campusArea).filter((text) => text !== "")));
+  } catch {
+    areaOptions.value = [];
   }
 }
 
-function onAreaConfirm({ selectedOptions }: { selectedOptions: { text: string }[] }): void {
-  const next = selectedOptions[0]?.text ?? "";
-  campus.area = next;
+function onAreaConfirm({ selectedOptions }: { selectedOptions: { text: string; value: string }[] }): void {
+  campus.area = selectedOptions[0]?.value ?? "";
   areaVisible.value = false;
-  void loadMerchants();
+  void load();
 }
 
+function onEmptyAction(): void {
+  if (areaOptions.value.length > 0) {
+    areaVisible.value = true;
+    return;
+  }
+  void load();
+}
+
+function onSlide(slide: BannerSlide): void {
+  if (slide.merchantId === "") {
+    return;
+  }
+  const merchant = merchants.value.find((row) => row.merchantId === slide.merchantId);
+  if (merchant && !businessOf(merchant).saleable) {
+    toastText(`${merchant.name} 休息中，先进去收藏一下`);
+  }
+  void router.push({ name: "menu", params: { id: slide.merchantId } });
+}
+
+function bindFromUrl(): void {
+  const parsed = parseScanTarget(route.fullPath);
+  if (parsed) {
+    dining.bind(parsed.merchantId, parsed.tableNo);
+  }
+}
+
+watch(
+  () => campus.area,
+  () => {
+    void load();
+  },
+);
+
 onMounted(() => {
+  bindFromUrl();
   void loadAreas();
-  void loadMerchants();
+  void load();
   void orders.refreshList();
+  void cart.refresh();
+  clock = window.setInterval(() => {
+    heartbeat.value += 1;
+  }, 1_000);
+});
+
+onActivated(() => {
+  keyword.value = lastKeyword();
+  bindFromUrl();
+  void orders.refreshList();
+  void cart.refresh();
+});
+
+onBeforeUnmount(() => {
+  if (clock !== undefined) {
+    window.clearInterval(clock);
+  }
 });
 </script>
 
@@ -238,7 +396,7 @@ onMounted(() => {
 .home-hero {
   position: relative;
   min-height: 236px;
-  padding: calc(1rem + env(safe-area-inset-top)) 1.25rem 2.25rem;
+  padding: calc(1rem + env(safe-area-inset-top)) 1.25rem 2.6rem;
   overflow: hidden;
   color: #fff;
   background:
@@ -331,7 +489,8 @@ onMounted(() => {
 .home-hero__content {
   position: relative;
   z-index: 1;
-  margin-top: 2rem;
+  max-width: 15rem;
+  margin-top: 1.5rem;
 }
 
 .home-hero__eyebrow {
@@ -353,7 +512,7 @@ onMounted(() => {
 }
 
 .home-hero h1 {
-  font-size: 2rem;
+  font-size: 1.85rem;
   line-height: 1.3;
   font-weight: var(--font-weight-bold);
   letter-spacing: -0.04em;
@@ -362,14 +521,14 @@ onMounted(() => {
 .home-hero p {
   margin-top: 0.45rem;
   color: rgba(255, 255, 255, 0.7);
-  font-size: 0.8rem;
+  font-size: 0.78rem;
 }
 
 .home-hero__illustration {
   position: absolute;
   right: -6px;
-  bottom: 3px;
-  width: 166px;
+  bottom: 16px;
+  width: 152px;
   height: auto;
   pointer-events: none;
 }
@@ -377,22 +536,121 @@ onMounted(() => {
 .home-content {
   position: relative;
   z-index: 3;
-  margin-top: -0.85rem;
   padding: 0 1rem;
 }
 
-.home-section {
-  margin-bottom: 1.4rem;
+.home-tools {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-top: -1.5rem;
 }
 
-.home-section--orders {
-  margin-bottom: 1.5rem;
+.home-search {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  flex: 1;
+  min-width: 0;
+  height: 44px;
+  padding: 0 0.85rem;
+  color: var(--content-meta);
+  background: var(--card-bg);
+  border: 1px solid var(--line-divider);
+  border-radius: var(--chip-radius);
+  box-shadow: var(--shadow-card);
+  font-size: 0.8rem;
+  text-decoration: none;
+}
+
+.home-search span {
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.home-search .is-ghost {
+  color: var(--muted);
+}
+
+.home-scan {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  flex: none;
+  height: 44px;
+  padding: 0 0.9rem;
+  color: var(--primary);
+  background: var(--primary-soft);
+  border: 0;
+  border-radius: var(--chip-radius);
+  font-size: 0.78rem;
+  font-weight: var(--font-weight-semibold);
+}
+
+.home-table {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  margin-top: 0.6rem;
+  padding: 0.5rem 0.75rem;
+  color: var(--accent-green);
+  background: var(--accent-green-soft);
+  border-radius: 12px;
+  font-size: 0.72rem;
+}
+
+.home-table span {
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.home-table button {
+  margin-left: auto;
+  flex: none;
+  padding: 0.1rem 0.5rem;
+  color: var(--content-meta);
+  background: var(--card-bg);
+  border: 0;
+  border-radius: var(--chip-radius);
+  font-size: 0.66rem;
+}
+
+.home-banner {
+  margin-top: 0.8rem;
+}
+
+.home-offline {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  margin-top: 0.7rem;
+  padding: 0.5rem 0.7rem;
+  color: var(--warn);
+  background: var(--warn-soft);
+  border-radius: 12px;
+  font-size: 0.72rem;
+}
+
+.home-section {
+  margin-top: 1.4rem;
 }
 
 .home-section__sub {
   margin-top: 0.2rem;
   color: var(--content-meta);
-  font-size: 0.72rem;
+  font-size: 0.7rem;
+}
+
+.home-count {
+  padding: 0.25rem 0.6rem;
+  color: var(--accent-green);
+  background: var(--accent-green-soft);
+  border: 0;
+  border-radius: 999px;
+  font-size: 0.7rem;
+  font-weight: var(--font-weight-medium);
 }
 
 .home-more {
@@ -404,24 +662,78 @@ onMounted(() => {
   text-decoration: none;
 }
 
-.home-count {
-  padding: 0.25rem 0.6rem;
-  color: var(--accent-green);
-  background: var(--accent-green-soft);
-  border-radius: 999px;
-  font-size: 0.7rem;
-  font-weight: var(--font-weight-medium);
+.home-chips {
+  display: flex;
+  gap: 0.4rem;
+  margin-bottom: 0.75rem;
+  overflow-x: auto;
+  scrollbar-width: none;
 }
 
-.home-skeleton {
-  padding: 1rem;
+.home-chips::-webkit-scrollbar {
+  display: none;
 }
 
-.home-active-list,
+.home-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  flex: none;
+  padding: 0.35rem 0.7rem;
+  color: var(--btn-content);
+  background: var(--btn-regular-bg);
+  border: 1px solid transparent;
+  border-radius: var(--chip-radius);
+  font-size: 0.75rem;
+}
+
+.home-chip i {
+  color: var(--meta-divider);
+  font-size: 0.62rem;
+  font-style: normal;
+}
+
+.home-chip.is-on {
+  color: var(--primary);
+  background: var(--primary-soft);
+  border-color: var(--primary);
+  font-weight: var(--font-weight-semibold);
+}
+
+.home-chip.is-on i {
+  color: var(--primary);
+}
+
 .home-merchant-list {
   display: flex;
   flex-direction: column;
-  gap: 0.8rem;
+  gap: 0.65rem;
+}
+
+.home-merchant-list--closed {
+  margin-top: 0.65rem;
+  opacity: 0.9;
+}
+
+.home-fold {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.3rem;
+  width: 100%;
+  margin-top: 0.85rem;
+  padding: 0.55rem;
+  color: var(--content-meta);
+  background: transparent;
+  border: 1px dashed var(--line-color);
+  border-radius: var(--control-radius);
+  font-size: 0.73rem;
+}
+
+.home-active-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.7rem;
 }
 
 .home-active-card {
@@ -473,7 +785,10 @@ onMounted(() => {
 }
 
 .home-active-card__waiting {
+  overflow: hidden;
   color: var(--content-meta);
+  white-space: nowrap;
+  text-overflow: ellipsis;
 }
 
 .home-active-card__right {
@@ -490,167 +805,8 @@ onMounted(() => {
   font-size: 0.68rem;
 }
 
-.home-merchant-card {
-  display: grid;
-  grid-template-columns: 76px minmax(0, 1fr);
-  gap: 0.85rem;
+.home-skeleton {
   padding: 1rem;
-  text-decoration: none;
-  color: inherit;
-  transition: transform var(--duration-fast) var(--ease-standard), box-shadow var(--duration-fast) var(--ease-standard);
-}
-
-.home-merchant-card:active {
-  transform: scale(0.985);
-  box-shadow: 0 3px 12px rgba(37, 51, 39, 0.05);
-}
-
-.home-merchant-card__logo {
-  position: relative;
-  width: 76px;
-  height: 76px;
-  overflow: hidden;
-  display: grid;
-  place-items: center;
-  color: #fff5df;
-  background: linear-gradient(145deg, #f7b267, #e9854f);
-  border-radius: 20px;
-  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.25);
-}
-
-.home-merchant-card:nth-child(2n) .home-merchant-card__logo {
-  background: linear-gradient(145deg, #75aa8d, #37755e);
-}
-
-.home-merchant-card:nth-child(3n) .home-merchant-card__logo {
-  background: linear-gradient(145deg, #a698c9, #76689f);
-}
-
-.home-merchant-card__logo > span {
-  font-size: 1.75rem;
-  font-weight: var(--font-weight-bold);
-}
-
-.home-merchant-card__logo img {
-  position: absolute;
-  inset: 0;
-  width: 100%;
-  height: 100%;
-  object-fit: cover;
-}
-
-.home-merchant-card__body {
-  min-width: 0;
-}
-
-.home-merchant-card__heading {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 0.5rem;
-}
-
-.home-merchant-card__name {
-  overflow: hidden;
-  color: var(--deep-text);
-  font-size: 1rem;
-  font-weight: var(--font-weight-bold);
-  white-space: nowrap;
-  text-overflow: ellipsis;
-}
-
-.home-merchant-card__status {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.28rem;
-  flex: none;
-  color: var(--ok);
-  font-size: 0.65rem;
-}
-
-.home-merchant-card__status i {
-  width: 5px;
-  height: 5px;
-  background: currentColor;
-  border-radius: 50%;
-}
-
-.home-merchant-card__status.is-closed {
-  color: var(--content-meta);
-}
-
-.home-merchant-card__description {
-  overflow: hidden;
-  margin-top: 0.25rem;
-  color: var(--content-meta);
-  font-size: 0.72rem;
-  white-space: nowrap;
-  text-overflow: ellipsis;
-}
-
-.home-merchant-card__meta {
-  display: flex;
-  align-items: center;
-  gap: 0.45rem;
-  min-width: 0;
-  margin-top: 0.45rem;
-  font-size: 0.66rem;
-}
-
-.home-merchant-card__category {
-  padding: 0.12rem 0.4rem;
-  color: var(--primary-dark);
-  background: var(--primary-soft);
-  border-radius: 5px;
-}
-
-.home-merchant-card__rating {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.15rem;
-  flex: none;
-  color: #d98a25;
-  font-family: var(--font-num);
-  font-weight: var(--font-weight-semibold);
-}
-
-.home-merchant-card__pickup {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.1rem;
-  min-width: 0;
-  overflow: hidden;
-  color: var(--content-meta);
-  white-space: nowrap;
-  text-overflow: ellipsis;
-}
-
-.home-merchant-card__stats {
-  display: flex;
-  align-items: center;
-  gap: 0.4rem;
-  margin-top: 0.6rem;
-  color: var(--content-meta);
-  font-size: 0.66rem;
-  white-space: nowrap;
-}
-
-.home-merchant-card__stats b {
-  color: var(--deep-text);
-  font-weight: var(--font-weight-semibold);
-}
-
-.home-merchant-card__stats > i {
-  width: 2px;
-  height: 2px;
-  background: var(--meta-divider);
-  border-radius: 50%;
-}
-
-.home-merchant-card__arrow {
-  margin-left: auto;
-  color: var(--meta-divider);
-  font-size: 14px;
 }
 
 .area-sheet {
@@ -679,29 +835,8 @@ onMounted(() => {
 @media (max-width: 360px) {
   .home-hero__illustration {
     right: -28px;
-    width: 150px;
+    width: 140px;
     opacity: 0.85;
-  }
-
-  .home-merchant-card {
-    grid-template-columns: 64px minmax(0, 1fr);
-    gap: 0.7rem;
-    padding: 0.85rem;
-  }
-
-  .home-merchant-card__logo {
-    width: 64px;
-    height: 64px;
-    border-radius: 17px;
-  }
-
-  .home-merchant-card__pickup {
-    display: none;
-  }
-
-  .home-merchant-card__stats {
-    gap: 0.25rem;
-    font-size: 0.61rem;
   }
 }
 

@@ -1,14 +1,16 @@
 import { delay, http, HttpResponse, type HttpHandler } from "msw";
 import { ErrorCode } from "../errors";
-import type { Envelope } from "../types";
-import { loadSeed, orderNoAt, payTimeoutMs, unitPriceOf, SEED_TABLE_COUNT, type Ctx, type MockCartItem, type MockData, type MockEntry, type MockOrder } from "./db";
+import type { Envelope, SearchHit } from "../types";
+import { loadSeed, orderNoAt, payTimeoutMs, unitPriceOf, SEED_TABLE_COUNT, type Ctx, type MockCartItem, type MockData, type MockEntry, type MockOrder, type MockReview } from "./db";
 import {
   accountDto,
   auditRowDto,
   cartResponse,
   configDto,
+  couponDto,
   dailyDto,
   dishDetailDto,
+  dishDto,
   favoriteDto,
   hashOf,
   iso,
@@ -21,10 +23,11 @@ import {
   paymentDto,
   pickupPointDto,
   preflightResult,
+  reviewDto,
   userDto,
 } from "./mappers";
 import { campusAreas, enabledChannels, merchantOpen, minVerifyToOrder, remainingOf } from "./db";
-import { TRANSITIONS, TERMINAL_STATUSES, type OrderStatus } from "@smartorder/shared";
+import { matchesFields, scoreMatch, TRANSITIONS, TERMINAL_STATUSES, type OrderStatus } from "@smartorder/shared";
 
 const SESSION_MS = 2 * 60 * 60_000;
 const REFRESH_MS = 30 * 24 * 60 * 60_000;
@@ -210,6 +213,7 @@ function buildOrder(
   picked: ReadonlyArray<{ dishId: string; entries: MockEntry[]; quantity: number }>,
   remark: string,
   clientOrderNo: string,
+  extra: { discountAmount: number; deliveryFee: number } = { discountAmount: 0, deliveryFee: 0 },
 ): MockOrder {
   orderSerial += 1;
   const merchant = data.merchants.find((row) => row.id === merchantId);
@@ -278,9 +282,9 @@ function buildOrder(
     status: "PENDING_PAYMENT",
     itemAmount,
     packFee,
-    deliveryFee: 0,
-    discountAmount: 0,
-    payAmount: itemAmount + packFee,
+    deliveryFee: extra.deliveryFee,
+    discountAmount: extra.discountAmount,
+    payAmount: Math.max(0, itemAmount + packFee - extra.discountAmount) + extra.deliveryFee,
     pickupCode: null,
     expectTakeAt: null,
     pickupDeadlineAt: null,
@@ -321,6 +325,12 @@ function mealPeriodOf(ms: number): "BREAKFAST" | "LUNCH" | "AFTERNOON" | "DINNER
 function nextPickupCode(): string {
   pickupSerial += 1;
   return String(pickupSerial).padStart(4, "0");
+}
+
+const DELIVERY_FEE_CENTS = 300;
+
+function deliveryFeeOf(body: Record<string, unknown>): number {
+  return String(body["fulfillmentType"] ?? "PICKUP") === "DELIVERY" ? DELIVERY_FEE_CENTS : 0;
 }
 
 export const handlers: HttpHandler[] = [
@@ -462,8 +472,47 @@ export const handlers: HttpHandler[] = [
     return ok(dishDetailDto(data, dish));
   }),
 
-  http.get("*/api/v1/cart", ({ request }) => {
-    const userId = studentId(request);
+  http.get("*/api/v1/search", ({ request }) => {
+    const url = new URL(request.url);
+    const keyword = (url.searchParams.get("keyword") ?? "").trim();
+    const area = url.searchParams.get("campusArea");
+    if (keyword === "") {
+      return ok<SearchHit[]>([]);
+    }
+    const hits: SearchHit[] = [];
+    for (const merchant of data.merchants) {
+      if (merchant.status !== 1) {
+        continue;
+      }
+      const summary = merchantDto(data, merchant, ctx);
+      if (area && summary.campusArea !== area) {
+        continue;
+      }
+      for (const category of data.categories.filter((row) => row.merchantId === merchant.id && row.visible)) {
+        for (const dish of data.dishes.filter((row) => row.categoryId === category.id && row.status !== 0)) {
+          if (!matchesFields(keyword, [dish.name, dish.subtitle, category.name, summary.name, ...dish.tags])) {
+            continue;
+          }
+          hits.push({
+            merchantId: summary.merchantId,
+            merchantName: summary.name,
+            merchantOpen: summary.open,
+            campusArea: summary.campusArea,
+            categoryName: category.name,
+            dish: dishDto(data, dish),
+          });
+        }
+      }
+    }
+    hits.sort(
+      (a, b) =>
+        scoreMatch(keyword, b.dish.name, `${b.dish.subtitle}${b.merchantName}`) -
+          scoreMatch(keyword, a.dish.name, `${a.dish.subtitle}${a.merchantName}`) || b.dish.monthSold - a.dish.monthSold,
+    );
+    return ok(hits.slice(0, 40));
+  }),
+
+  http.get("*/api/v1/cart", ({ request }) => {    const userId = studentId(request);
     return ok(cartResponse(data, linesOf(userId), ctx));
   }),
 
@@ -583,7 +632,12 @@ export const handlers: HttpHandler[] = [
     if (picked.length === 0) {
       return fail(ErrorCode.CART_EMPTY, "购物车是空的");
     }
-    return ok(preflightResult(data, merchant, picked, ctx));
+    return ok(
+      preflightResult(data, merchant, picked, ctx, {
+        couponId: String(body["couponId"] ?? ""),
+        deliveryFee: deliveryFeeOf(body),
+      }),
+    );
   }),
 
   http.post("*/api/v1/orders", async ({ request }) => {
@@ -622,7 +676,12 @@ export const handlers: HttpHandler[] = [
     if (picked.length === 0) {
       return fail(ErrorCode.CART_EMPTY, "购物车是空的");
     }
-    const preflight = preflightResult(data, merchant, picked, ctx);
+    const fulfillment = String(body["fulfillmentType"] ?? "PICKUP");
+    const deliveryFee = fulfillment === "DELIVERY" ? DELIVERY_FEE_CENTS : 0;
+    const preflight = preflightResult(data, merchant, picked, ctx, {
+      couponId: String(body["couponId"] ?? ""),
+      deliveryFee,
+    });
     if (!preflight.fulfillable) {
       return fail(
         preflight.rejectReason.includes("起送") ? ErrorCode.INVALID_PARAM : ErrorCode.STOCK_NOT_ENOUGH,
@@ -630,7 +689,18 @@ export const handlers: HttpHandler[] = [
       );
     }
 
-    const order = buildOrder(merchantId, userId, picked, String(body["remark"] ?? ""), clientOrderNo);
+    const order = buildOrder(merchantId, userId, picked, String(body["remark"] ?? ""), clientOrderNo, {
+      discountAmount: preflight.discountAmount,
+      deliveryFee,
+    });
+    if (preflight.couponId) {
+      const coupon = data.coupons.find((row) => row.id === preflight.couponId);
+      if (coupon) {
+        coupon.state = "USED";
+        coupon.usedAt = ctx.now;
+        coupon.orderNo = order.orderNo;
+      }
+    }
     data.orders.push(order);
     idempotency.set(clientOrderNo, order.orderNo);
 
@@ -692,12 +762,15 @@ export const handlers: HttpHandler[] = [
     if (order.userId !== studentId(request)) {
       return fail(ErrorCode.ORDER_NOT_OWNER, "只能操作自己的订单");
     }
+    const body = await readJson(request);
+    const reason = String(body["reason"] ?? "").trim();
     if (order.status === "PENDING_PAYMENT") {
       releaseLocked(order);
-      log(order, order.status, "CANCELLED", "USER", "学生", "未支付主动取消");
+      log(order, order.status, "CANCELLED", "USER", "学生", reason === "" ? "未支付主动取消" : reason);
       order.status = "CANCELLED";
       order.cancelledAt = ctx.now;
       order.cancelBy = "USER";
+      order.cancelReason = reason;
       return ok(orderDetailDto(data, order, ctx));
     }
     if (order.status === "PAID") {
@@ -705,10 +778,11 @@ export const handlers: HttpHandler[] = [
         return fail(ErrorCode.ORDER_REFUND_NOT_ALLOWED, "超过自助取消时间，请申请退款");
       }
       commitLocked(order);
-      log(order, order.status, "CANCELLED", "USER", "学生", "支付后自助取消");
+      log(order, order.status, "CANCELLED", "USER", "学生", reason === "" ? "支付后自助取消" : reason);
       order.status = "CANCELLED";
       order.cancelledAt = ctx.now;
       order.cancelBy = "USER";
+      order.cancelReason = reason;
       return ok(orderDetailDto(data, order, ctx));
     }
     return fail(ErrorCode.ORDER_STATUS_ILLEGAL, "订单当前状态不支持该操作");
@@ -883,6 +957,130 @@ export const handlers: HttpHandler[] = [
       notice.readFlag = true;
     }
     return ok(noticeDto(data, studentId(request)));
+  }),
+
+  http.get("*/api/v1/coupons", ({ request }) => {
+    tick();
+    const state = new URL(request.url).searchParams.get("state");
+    const list = data.coupons
+      .map((coupon) => couponDto(coupon, ctx))
+      .filter((coupon) => (state === null || state === "" ? true : coupon.state === state))
+      .sort((a, b) => Date.parse(b.endAt) - Date.parse(a.endAt));
+    return ok(list);
+  }),
+
+  http.get("*/api/v1/merchants/:merchantId/reviews", ({ params }) => {
+    const list = data.reviews
+      .filter((review) => review.merchantId === String(params["merchantId"]))
+      .sort((a, b) => b.createdAt - a.createdAt)
+      .map((review) => reviewDto(data, review));
+    return ok(list);
+  }),
+
+  http.get("*/api/v1/reviews", ({ request }) => {
+    const userId = studentId(request);
+    const list = data.reviews
+      .filter((review) => review.userId === userId)
+      .sort((a, b) => b.createdAt - a.createdAt)
+      .map((review) => reviewDto(data, review));
+    return ok(list);
+  }),
+
+  http.get("*/api/v1/orders/:orderNo/review", ({ params, request }) => {
+    const userId = studentId(request);
+    const order = findOrder(String(params["orderNo"]));
+    if (!order) {
+      return fail(ErrorCode.ORDER_NOT_FOUND, "订单不存在");
+    }
+    const review = data.reviews.find((row) => row.orderId === order.id && row.userId === userId);
+    return ok(review ? reviewDto(data, review) : null);
+  }),
+
+  http.post("*/api/v1/reviews", async ({ request }) => {
+    await delay();
+    const userId = studentId(request);
+    const body = await readJson(request);
+    const order = findOrder(String(body["orderNo"] ?? ""));
+    if (!order || order.userId !== userId) {
+      return fail(ErrorCode.ORDER_NOT_FOUND, "订单不存在");
+    }
+    if (order.status !== "COMPLETED") {
+      return fail(ErrorCode.ORDER_STATUS_ILLEGAL, "订单完成后才能评价");
+    }
+    if (data.reviews.some((row) => row.orderId === order.id)) {
+      return fail(ErrorCode.INVALID_PARAM, "该订单已评价过");
+    }
+    const clamp = (value: unknown, fallback: number): number =>
+      Math.min(5, Math.max(1, Math.trunc(Number(value ?? fallback)) || fallback));
+    const rating = clamp(body["ratingScore"], 5);
+    const review: MockReview = {
+      id: String(data.reviews.length + 1),
+      orderId: order.id,
+      orderNo: order.orderNo,
+      userId,
+      merchantId: order.merchantId,
+      ratingScore: rating,
+      tasteScore: clamp(body["tasteScore"], rating),
+      speedScore: clamp(body["speedScore"], rating),
+      content: String(body["content"] ?? "").slice(0, 500),
+      tags: Array.isArray(body["tags"]) ? body["tags"].map(String).slice(0, 6) : [],
+      images: Array.isArray(body["images"]) ? body["images"].map(String).slice(0, 3) : [],
+      anonymous: Boolean(body["anonymous"]),
+      replyContent: "",
+      createdAt: ctx.now,
+    };
+    data.reviews.push(review);
+    const merchant = data.merchants.find((row) => row.id === order.merchantId);
+    if (merchant) {
+      const nextCount = merchant.ratingCount + 1;
+      merchant.ratingScore = Math.round((merchant.ratingScore * merchant.ratingCount + rating * 100) / nextCount);
+      merchant.ratingCount = nextCount;
+    }
+    return ok(reviewDto(data, review));
+  }),
+
+  http.get("*/api/v1/search", ({ request }) => {
+    const url = new URL(request.url);
+    const keyword = (url.searchParams.get("keyword") ?? "").trim().toLowerCase();
+    const area = url.searchParams.get("campusArea");
+    if (keyword === "") {
+      return ok([]);
+    }
+    const hits: SearchHit[] = [];
+    for (const merchant of data.merchants) {
+      if (merchant.status !== 1) {
+        continue;
+      }
+      const summary = merchantDto(data, merchant, ctx);
+      if (area !== null && area !== "" && summary.campusArea !== area) {
+        continue;
+      }
+      for (const category of menuDto(data, merchant, ctx).categories) {
+        for (const dish of category.dishes) {
+          const haystack = [dish.name, dish.subtitle, category.name, summary.name, ...dish.tags]
+            .join(" ")
+            .toLowerCase();
+          if (!haystack.includes(keyword)) {
+            continue;
+          }
+          hits.push({
+            merchantId: summary.merchantId,
+            merchantName: summary.name,
+            merchantOpen: summary.open,
+            campusArea: summary.campusArea,
+            categoryName: category.name,
+            dish,
+          });
+        }
+      }
+    }
+    hits.sort((a, b) => {
+      if (a.merchantOpen !== b.merchantOpen) {
+        return a.merchantOpen ? -1 : 1;
+      }
+      return b.dish.monthSold - a.dish.monthSold;
+    });
+    return ok(hits.slice(0, 60));
   }),
 
   http.post("*/api/v1/auth/console/login", async ({ request }) => {

@@ -1,8 +1,10 @@
 import { createApp } from "vue";
 import { createPinia } from "pinia";
 import {
+  ActionSheet,
   Badge,
   Button,
+  Cell,
   Checkbox,
   Empty,
   Field,
@@ -14,10 +16,13 @@ import {
   Picker,
   Popup,
   PullRefresh,
+  Rate,
   Skeleton,
   Stepper,
   Sticky,
   Switch,
+  Swipe,
+  SwipeItem,
   Tab,
   Tabbar,
   TabbarItem,
@@ -33,8 +38,10 @@ import { router } from "./router";
 import { bootApi } from "./bootstrap";
 
 const components = [
+  ActionSheet,
   Badge,
   Button,
+  Cell,
   Checkbox,
   Empty,
   Field,
@@ -46,10 +53,13 @@ const components = [
   Picker,
   Popup,
   PullRefresh,
+  Rate,
   Skeleton,
   Stepper,
   Sticky,
   Switch,
+  Swipe,
+  SwipeItem,
   Tab,
   Tabbar,
   TabbarItem,

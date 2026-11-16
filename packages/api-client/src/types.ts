@@ -101,6 +101,7 @@ export interface MerchantSummary {
   categoryCode: string;
   categoryName: string;
   logoUrl: string;
+  bannerUrl: string;
   description: string;
   pickupPointId: Id;
   pickupPointName: string;
@@ -191,6 +192,15 @@ export interface DishDetail extends DishSummary {
   categoryName: string;
 }
 
+export interface SearchHit {
+  merchantId: Id;
+  merchantName: string;
+  merchantOpen: boolean;
+  campusArea: string;
+  categoryName: string;
+  dish: DishSummary;
+}
+
 export interface CartEntry {
   group: string;
   optionId: Id;
@@ -263,6 +273,7 @@ export interface PreflightRequest {
   remark?: string;
   contactPhone?: string;
   fulfillmentType: FulfillmentType;
+  couponId?: Id | null;
 }
 
 export interface PreflightLineResult {
@@ -290,6 +301,9 @@ export interface PreflightResult {
   rejectReason: string;
   serverTime: IsoDateTime;
   expireAt: IsoDateTime;
+  couponId?: Id | null;
+  couponName?: string;
+  couponRejected?: string;
 }
 
 export interface CreateOrderRequest {
@@ -300,6 +314,7 @@ export interface CreateOrderRequest {
   contactName?: string;
   contactPhone?: string;
   fulfillmentType: FulfillmentType;
+  couponId?: Id | null;
 }
 
 export interface CreateOrderResult {
@@ -561,6 +576,58 @@ export interface MerchantAuditRow {
   ratingScore: number;
 }
 
+export type CouponKind = "CASH" | "DISCOUNT" | "SHIPPING";
+export type CouponState = "UNUSED" | "USED" | "EXPIRED";
+
+export interface Coupon {
+  couponId: Id;
+  name: string;
+  subtitle: string;
+  kind: CouponKind;
+  thresholdAmount: number;
+  discountAmount: number;
+  discountRate: number;
+  maxDiscountAmount: number;
+  merchantIds: Id[];
+  state: CouponState;
+  startAt: IsoDateTime;
+  endAt: IsoDateTime;
+  usedAt: IsoDateTime | null;
+  orderNo: string;
+  source: string;
+}
+
+export interface CreateReviewRequest {
+  orderNo: string;
+  ratingScore: number;
+  tasteScore: number;
+  speedScore: number;
+  tags: string[];
+  content: string;
+  images: string[];
+  anonymous: boolean;
+}
+
+export interface ReviewDto {
+  reviewId: Id;
+  orderNo: string;
+  merchantId: Id;
+  merchantName: string;
+  userId: Id;
+  userName: string;
+  userAvatar: string;
+  ratingScore: number;
+  tasteScore: number;
+  speedScore: number;
+  tags: string[];
+  content: string;
+  images: string[];
+  anonymous: boolean;
+  dishNames: string[];
+  replyContent: string;
+  createdAt: IsoDateTime;
+}
+
 export interface PlatformOverview {
   serverTime: IsoDateTime;
   merchantTotal: number;
@@ -576,4 +643,216 @@ export interface PlatformOverview {
   unpaidOrders: number;
   dailyTrend: MerchantDailyStat[];
   campusAreas: string[];
+}
+
+export interface MerchantConsoleProfile {
+  merchantId: Id;
+  name: string;
+  categoryCode: string;
+  categoryName: string;
+  logoUrl: string;
+  description: string;
+  contactName: string;
+  contactPhone: string;
+  licenseNo: string;
+  settleAccount: string;
+  pickupPointId: Id;
+  pickupPointName: string;
+  campusArea: string;
+  minOrderAmount: number;
+  packFee: number;
+  avgPrepareMinutes: number;
+  monthSold: number;
+  ratingScore: number;
+  ratingCount: number;
+  status: MerchantStatus;
+  open: boolean;
+  closeReason: string;
+  openTime: string;
+  closeTime: string;
+  serverTime: IsoDateTime;
+}
+
+export interface MerchantProfileUpdateRequest {
+  name?: string;
+  categoryCode?: string;
+  description?: string;
+  logoUrl?: string;
+  contactName?: string;
+  contactPhone?: string;
+  licenseNo?: string;
+  settleAccount?: string;
+  minOrderAmount?: number;
+  packFee?: number;
+  avgPrepareMinutes?: number;
+}
+
+export interface MerchantMenuCategory {
+  categoryId: Id;
+  name: string;
+  sortWeight: number;
+  visible: boolean;
+  dishes: DishSummary[];
+}
+
+export interface MerchantMenu {
+  merchant: MerchantConsoleProfile;
+  bizDate: string;
+  categories: MerchantMenuCategory[];
+  serverTime: IsoDateTime;
+  stockVersion: string;
+}
+
+export interface DishOptionSaveRequest {
+  optionId: Id | null;
+  name: string;
+  priceDelta: number;
+  isDefault: boolean;
+  stock: number | null;
+  sortWeight: number;
+  status: number;
+}
+
+export interface DishGroupSaveRequest {
+  groupId: Id | null;
+  name: string;
+  groupType: OptionGroupType;
+  required: boolean;
+  minSelect: number;
+  maxSelect: number;
+  sortWeight: number;
+  options: DishOptionSaveRequest[];
+}
+
+export interface DishSaveRequest {
+  categoryId: Id;
+  name: string;
+  subtitle: string;
+  imageUrl: string;
+  description: string;
+  basePrice: number;
+  packFee: number;
+  minBuyCount: number;
+  maxBuyPerOrder: number;
+  stockMode: StockMode;
+  stockTotal: number;
+  saleTimeStart: string;
+  saleTimeEnd: string;
+  tags: string[];
+  recommended: boolean;
+  status: DishStatus;
+  sortWeight: number;
+  groups: DishGroupSaveRequest[];
+}
+
+export interface DishStatusUpdateRequest {
+  dishIds: Id[];
+  status: DishStatus;
+}
+
+export interface CategorySaveRequest {
+  name: string;
+  sortWeight: number;
+  visible: boolean;
+}
+
+export interface CategorySortRequest {
+  categoryIds: Id[];
+}
+
+export interface MerchantHoursRow {
+  dayOfWeek: number;
+  dayLabel: string;
+  openTime: string;
+  closeTime: string;
+  acceptStart: string;
+  acceptEnd: string;
+  closed: boolean;
+}
+
+export interface MerchantHoursInput {
+  dayOfWeek: number;
+  openTime: string;
+  closeTime: string;
+  acceptStart: string;
+  acceptEnd: string;
+  closed: boolean;
+}
+
+export type OverrideType = "CLOSED" | "HOURS";
+
+export interface MerchantDateOverride {
+  bizDate: string;
+  overrideType: OverrideType;
+  openTime: string;
+  closeTime: string;
+  reason: string;
+}
+
+export interface DateOverrideSaveRequest {
+  bizDate: string;
+  overrideType: OverrideType;
+  openTime?: string;
+  closeTime?: string;
+  reason?: string;
+}
+
+export interface MerchantHoursResponse {
+  merchantId: Id;
+  rows: MerchantHoursRow[];
+  overrides: MerchantDateOverride[];
+  serverTime: IsoDateTime;
+}
+
+export interface MerchantHoursSaveRequest {
+  rows: MerchantHoursInput[];
+}
+
+export interface StockRow {
+  dishId: Id;
+  name: string;
+  categoryId: Id;
+  categoryName: string;
+  status: DishStatus;
+  stockMode: StockMode;
+  total: number;
+  locked: number;
+  sold: number;
+  remaining: number;
+  soldOut: boolean;
+  monthSold: number;
+}
+
+export interface StockUpdateResult {
+  dishId: Id;
+  bizDate: string;
+  total: number;
+  locked: number;
+  sold: number;
+  remaining: number;
+  soldOut: boolean;
+  status: DishStatus;
+}
+
+export interface MerchantStockResponse {
+  merchantId: Id;
+  bizDate: string;
+  serverTime: IsoDateTime;
+  rows: StockRow[];
+}
+
+export interface MerchantStatOverview {
+  bizDate: string;
+  serverTime: IsoDateTime;
+  waitingCount: number;
+  cookingCount: number;
+  readyCount: number;
+  refundCount: number;
+  orderCount: number;
+  paidCount: number;
+  cancelCount: number;
+  turnoverAmount: number;
+  netAmount: number;
+  avgPrepareSeconds: number;
+  soldOutDishes: number;
 }
