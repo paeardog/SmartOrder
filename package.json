@@ -1,0 +1,16 @@
+{
+  "name": "smartorder",
+  "version": "0.1.0",
+  "private": true,
+  "description": "校园点单系统：数据库、约束测试与后端",
+  "type": "module",
+  "scripts": {
+    "check": "node scripts/check-schema.mjs db/schema.sql db/seed.sql",
+    "gen:flyway": "node scripts/gen-flyway.mjs",
+    "check:flyway": "node scripts/gen-flyway.mjs --check",
+    "test:db": "node scripts/run-db-tests.mjs"
+  },
+  "devDependencies": {
+    "node-sql-parser": "^5.4.0"
+  }
+}

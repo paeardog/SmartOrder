@@ -1,0 +1,11 @@
+UPDATE m_dish_stock SET stock_locked = stock_locked + 2 WHERE dish_id = 1 AND biz_date = CURDATE() AND stock_total >= stock_locked + stock_sold + 2;
+SELECT ROW_COUNT() AS lock_available_should_be_1;
+UPDATE m_dish_stock SET stock_locked = stock_locked + 1 WHERE dish_id = 7 AND biz_date = CURDATE() AND stock_total >= stock_locked + stock_sold + 1;
+SELECT ROW_COUNT() AS lock_sold_out_should_be_0;
+UPDATE m_dish_stock SET stock_locked = stock_locked + 100000 WHERE dish_id = 1 AND biz_date = CURDATE() AND stock_total >= stock_locked + stock_sold + 100000;
+SELECT ROW_COUNT() AS lock_huge_should_be_0;
+UPDATE m_dish_stock SET stock_locked = stock_locked - 2 WHERE dish_id = 1 AND biz_date = CURDATE() AND stock_locked >= 2;
+SELECT ROW_COUNT() AS release_should_be_1;
+UPDATE m_dish_stock SET stock_locked = stock_locked - 500 WHERE dish_id = 1 AND biz_date = CURDATE() AND stock_locked >= 500;
+SELECT ROW_COUNT() AS release_guarded_should_be_0;
+SELECT dish_id, stock_total, stock_locked, stock_sold, stock_total - stock_locked - stock_sold AS avail FROM m_dish_stock WHERE dish_id IN (1, 7) AND biz_date = CURDATE();

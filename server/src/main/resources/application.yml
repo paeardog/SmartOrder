@@ -1,0 +1,77 @@
+server:
+  port: 8080
+  shutdown: graceful
+  tomcat:
+    threads:
+      max: 100
+    max-http-form-post-size: 64KB
+    relaxed-query-chars: '[,]'
+
+spring:
+  application:
+    name: smartorder-server
+  profiles:
+    active: dev
+  lifecycle:
+    timeout-per-shutdown-phase: 20s
+  jackson:
+    default-property-inclusion: non_null
+    deserialization:
+      fail-on-unknown-properties: false
+  datasource:
+    driver-class-name: com.mysql.cj.jdbc.Driver
+    hikari:
+      pool-name: smartorder-pool
+      maximum-pool-size: 12
+      minimum-idle: 2
+      connection-timeout: 5000
+      max-lifetime: 1740000
+      leak-detection-threshold: 20000
+      connection-test-query: SELECT 1
+  flyway:
+    enabled: true
+    locations: classpath:db/migration
+    baseline-on-migrate: true
+    baseline-version: 0
+    validate-on-migrate: true
+    clean-disabled: true
+  mvc:
+    problemdetails:
+      enabled: false
+  task:
+    scheduling:
+      pool:
+        size: 2
+      thread-name-prefix: sched-
+
+mybatis-plus:
+  configuration:
+    map-underscore-to-camel-case: true
+    default-enum-type-handler: org.apache.ibatis.type.EnumTypeHandler
+    cache-enabled: false
+  global-config:
+    banner: false
+    db-config:
+      id-type: auto
+      table-underline: true
+
+smartorder:
+  zone-id: Asia/Shanghai
+  payment:
+    enabled-channels: MOCK
+    callback-base-url: http://localhost:8080
+  order:
+    pay-timeout-minutes: 10
+    pickup-hold-minutes: 45
+    auto-complete-after-minutes: 120
+    max-items-per-order: 20
+    max-quantity-per-dish: 20
+  security:
+    access-token-ttl: 2h
+    refresh-token-ttl: 30d
+    issuer: smartorder
+
+logging:
+  level:
+    root: INFO
+    com.campus.smartorder: DEBUG

@@ -1,0 +1,16 @@
+spring:
+  datasource:
+    url: jdbc:mysql://127.0.0.1:3307/smartorder?useSSL=false&allowPublicKeyRetrieval=true&characterEncoding=utf8&connectionTimeZone=%2B08:00&forceConnectionTimeZoneToSession=true&rewriteBatchedStatements=true
+    username: root
+    password: ""
+
+smartorder:
+  security:
+    jwt-secret: ZGV2LW9ubHktc2VjcmV0LWRvLW5vdC1zaGlwLXRoaXMtdmFsdWUtaW50by1naXQ=
+  messaging:
+    sms-enabled: false
+
+logging:
+  level:
+    com.campus.smartorder: DEBUG
+    org.springframework.jdbc.datasource.DataSourceTransactionManager: DEBUG

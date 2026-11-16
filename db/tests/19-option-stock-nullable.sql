@@ -1,0 +1,10 @@
+SELECT COUNT(*) AS rows_before FROM m_dish_option;
+SELECT SUM(stock IS NULL) AS unlimited_by_default FROM m_dish_option;
+UPDATE m_dish_option SET stock = 5 WHERE id = 1;
+UPDATE m_dish_option SET stock = stock - 3 WHERE id = 1 AND stock IS NOT NULL AND stock >= 3;
+SELECT ROW_COUNT() AS finite_deduct_should_be_1;
+UPDATE m_dish_option SET stock = stock - 99 WHERE id = 1 AND stock IS NOT NULL AND stock >= 99;
+SELECT ROW_COUNT() AS over_deduct_should_be_0;
+UPDATE m_dish_option SET stock = stock - 1 WHERE id = 2 AND stock IS NOT NULL AND stock >= 1;
+SELECT ROW_COUNT() AS unlimited_skipped_should_be_0;
+SELECT id, name, stock, stock IS NULL AS is_unlimited FROM m_dish_option WHERE id IN (1, 2);
