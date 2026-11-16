@@ -121,6 +121,16 @@ public final class MerchantDto {
             String categoryName) {
     }
 
+    public record Point(
+            String pickupPointId,
+            String name,
+            String campusArea,
+            String building,
+            String floorText,
+            String openTime,
+            String closeTime) {
+    }
+
     public record SearchHit(
             String merchantId,
             String merchantName,

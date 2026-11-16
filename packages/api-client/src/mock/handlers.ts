@@ -27,22 +27,77 @@ import {
   userDto,
 } from "./mappers";
 import { campusAreas, enabledChannels, merchantOpen, minVerifyToOrder, remainingOf } from "./db";
+import { buildMerchantMenu, consoleProfileOf, merchantConsoleHandlers, stockUpdateResultOf } from "./merchantConsole";
 import { matchesFields, scoreMatch, TRANSITIONS, TERMINAL_STATUSES, type OrderStatus } from "@smartorder/shared";
 
 const SESSION_MS = 2 * 60 * 60_000;
 const REFRESH_MS = 30 * 24 * 60 * 60_000;
+const SESSION_STORE_KEY = "so.mock.sessions";
 
-const ctx: Ctx = { now: Date.now() };
-const data: MockData = loadSeed(ctx);
-const sessions = new Map<string, ClientState & { expires: number }>();
+export const ctx: Ctx = { now: Date.now() };
+export const data: MockData = loadSeed(ctx);
+export const sessions = new Map<string, ClientState & { expires: number }>();
 const idempotency = new Map<string, string>();
 let orderSerial = data.orders.length;
 let pickupSerial = 3000;
 
-interface ClientState {
+export interface ClientState {
   kind: "user" | "account";
   id: string;
 }
+
+function saveSessions(): void {
+  if (typeof window === "undefined") {
+    return;
+  }
+  try {
+    window.localStorage.setItem(SESSION_STORE_KEY, JSON.stringify([...sessions]));
+  } catch {
+    window.localStorage.removeItem(SESSION_STORE_KEY);
+  }
+}
+
+function loadSessions(): void {
+  if (typeof window === "undefined") {
+    return;
+  }
+  let parsed: unknown = null;
+  try {
+    const raw = window.localStorage.getItem(SESSION_STORE_KEY);
+    parsed = raw ? JSON.parse(raw) : null;
+  } catch {
+    window.localStorage.removeItem(SESSION_STORE_KEY);
+    return;
+  }
+  if (!Array.isArray(parsed)) {
+    return;
+  }
+  for (const entry of parsed) {
+    if (!Array.isArray(entry) || entry.length < 2) {
+      continue;
+    }
+    const token = entry[0];
+    const value = entry[1];
+    if (typeof token !== "string" || !value || typeof value !== "object") {
+      continue;
+    }
+    const record = value as Record<string, unknown>;
+    if (typeof record["id"] !== "string" || typeof record["expires"] !== "number") {
+      continue;
+    }
+    if (record["expires"] < Date.now()) {
+      continue;
+    }
+    sessions.set(token, {
+      kind: record["kind"] === "account" ? "account" : "user",
+      id: record["id"],
+      expires: record["expires"],
+    });
+  }
+  saveSessions();
+}
+
+loadSessions();
 
 function tick(): void {
   ctx.now = Date.now();
@@ -57,21 +112,21 @@ function traceOf(): string {
   return (ctx.now % 1_000_000).toString(16).padStart(6, "0") + Math.floor(Math.random() * 46_656).toString(36);
 }
 
-function ok<T>(payload: T): Response {
+export function ok<T>(payload: T): Response {
   tick();
   return HttpResponse.json(envelope<T>(ErrorCode.SUCCESS, "ok", payload), {
     headers: { "x-server-time": iso(ctx.now) },
   });
 }
 
-function fail(code: number, message: string): Response {
+export function fail(code: number, message: string): Response {
   tick();
   return HttpResponse.json(envelope<null>(code, message, null), {
     headers: { "x-server-time": iso(ctx.now) },
   });
 }
 
-function readJson(raw: Request): Promise<Record<string, unknown>> {
+export function readJson(raw: Request): Promise<Record<string, unknown>> {
   return raw
     .json()
     .then((value) => (value && typeof value === "object" ? (value as Record<string, unknown>) : {}))
@@ -82,7 +137,7 @@ function header(raw: Request, name: string): string {
   return raw.headers.get(name) ?? "";
 }
 
-function authOf(raw: Request): ClientState | null {
+export function authOf(raw: Request): ClientState | null {
   const token = header(raw, "Authorization").replace(/^Bearer\s+/i, "");
   if (token === "") {
     return null;
@@ -93,6 +148,7 @@ function authOf(raw: Request): ClientState | null {
   }
   if (session.expires < Date.now()) {
     sessions.delete(token);
+    saveSessions();
     return null;
   }
   return { kind: session.kind, id: session.id };
@@ -103,6 +159,7 @@ function issue(kind: "user" | "account", id: string): { accessToken: string; ref
   const refreshToken = `r_${id}_${Math.random().toString(36).slice(2, 14)}`;
   sessions.set(accessToken, { kind, id, expires: Date.now() + SESSION_MS });
   sessions.set(refreshToken, { kind, id, expires: Date.now() + REFRESH_MS });
+  saveSessions();
   return { accessToken, refreshToken, expiresIn: SESSION_MS / 1000 };
 }
 
@@ -111,7 +168,7 @@ function studentId(raw: Request): string {
   return state?.kind === "user" ? state.id : data.users[0]?.id ?? "1";
 }
 
-function merchantIdOf(state: ClientState): string {
+export function merchantIdOf(state: ClientState): string {
   const account = data.accounts.find((row) => row.id === state.id);
   return account?.merchantId ?? "1";
 }
@@ -414,6 +471,7 @@ export const handlers: HttpHandler[] = [
     await delay();
     const body = await readJson(request);
     sessions.delete(String(body["refreshToken"] ?? ""));
+    saveSessions();
     return ok(null);
   }),
 
@@ -901,10 +959,22 @@ export const handlers: HttpHandler[] = [
 
   http.post("*/api/v1/refunds/:refundNo/audit", async ({ params, request }) => {
     await delay();
+    const state = authOf(request);
+    if (!state) {
+      return fail(ErrorCode.UNAUTHORIZED, "请先登录");
+    }
+    if (state.kind !== "account") {
+      return fail(ErrorCode.FORBIDDEN, "退款审核只在商家和后台端操作");
+    }
     const body = await readJson(request);
     const order = data.orders.find((row) => row.refund?.refundNo === String(params["refundNo"]));
     if (!order || !order.refund) {
       return fail(ErrorCode.RESOURCE_NOT_FOUND, "退款单不存在");
+    }
+    const account = data.accounts.find((row) => row.id === state.id);
+    const isPlatform = account?.roleCode === "PLATFORM_ADMIN";
+    if (!isPlatform && order.merchantId !== merchantIdOf(state)) {
+      return fail(ErrorCode.FORBIDDEN, "不能操作其他档口的订单");
     }
     const approved = Boolean(body["approved"]);
     order.refund.auditNote = String(body["note"] ?? "");
@@ -916,7 +986,7 @@ export const handlers: HttpHandler[] = [
     order.refund.status = "SUCCEEDED";
     order.refund.succeededAt = ctx.now;
     releaseLocked(order);
-    log(order, order.status, "REFUNDED", "MERCHANT", "商家", "退款审核通过");
+    log(order, order.status, "REFUNDED", "MERCHANT", accountName(state), isPlatform ? "平台审核通过退款" : "商家同意退款");
     order.status = "REFUNDED";
     return ok(orderDetailDto(data, order, ctx));
   }),
@@ -1159,7 +1229,7 @@ export const handlers: HttpHandler[] = [
     if (!merchant) {
       return fail(ErrorCode.MERCHANT_NOT_FOUND, "档口不存在");
     }
-    return ok(menuDto(data, merchant, ctx));
+    return ok(buildMerchantMenu(merchant));
   }),
 
   merchantAction("accept", "PAID", "ACCEPTED", "已接单", (order) => {
@@ -1260,7 +1330,7 @@ export const handlers: HttpHandler[] = [
     } else if (dish.status === 2) {
       dish.status = 1;
     }
-    return ok({ dishId, remaining: Math.max(0, stock.total - stock.locked - stock.sold) });
+    return ok(stockUpdateResultOf(dishId));
   }),
 
   http.patch("*/api/v1/merchant/status", async ({ request }) => {
@@ -1279,7 +1349,7 @@ export const handlers: HttpHandler[] = [
       data.overrides.delete(key);
     }
     const merchant = data.merchants.find((row) => row.id === merchantId);
-    return ok(merchant ? merchantDto(data, merchant, ctx) : null);
+    return ok(merchant ? consoleProfileOf(merchant.id) : null);
   }),
 
   http.get("*/api/v1/merchant/stats/daily", ({ request }) => {
@@ -1407,9 +1477,11 @@ export const handlers: HttpHandler[] = [
     config.configValue = String(body["configValue"] ?? "");
     return ok(config);
   }),
+
+  ...merchantConsoleHandlers,
 ];
 
-function accountName(state: ClientState): string {
+export function accountName(state: ClientState): string {
   return data.accounts.find((row) => row.id === state.id)?.realName ?? "商家";
 }
 

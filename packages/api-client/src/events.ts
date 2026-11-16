@@ -21,6 +21,7 @@ export interface StreamOptions {
   fallbackIntervalMs?: number;
   maxRetry?: number;
   token?: string;
+  mode?: "auto" | "poll";
 }
 
 export class OrderStream {
@@ -34,6 +35,7 @@ export class OrderStream {
   private readonly url: string;
   private readonly interval: number;
   private readonly maxRetry: number;
+  private readonly pollOnly: boolean;
 
   constructor(private readonly handlers: StreamHandlers, options: StreamOptions = {}) {
     const path = options.path ?? "/events/stream";
@@ -41,6 +43,7 @@ export class OrderStream {
     this.url = `/api/v1${path}${token === "" ? "" : `?token=${encodeURIComponent(token)}`}`;
     this.interval = options.fallbackIntervalMs ?? 5_000;
     this.maxRetry = options.maxRetry ?? 3;
+    this.pollOnly = options.mode === "poll";
   }
 
   start(poller?: () => void): void {
@@ -53,7 +56,7 @@ export class OrderStream {
     if (this.stopped) {
       return;
     }
-    if (typeof EventSource === "undefined") {
+    if (this.pollOnly || typeof EventSource === "undefined") {
       this.enterPolling();
       return;
     }

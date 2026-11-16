@@ -70,6 +70,7 @@ smartorder:
     access-token-ttl: 2h
     refresh-token-ttl: 30d
     issuer: smartorder
+    dev-account-password: ""
 
 logging:
   level:

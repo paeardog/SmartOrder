@@ -10,3 +10,4 @@ pnpm-lock.yaml.*
 .env.*
 *.log
 .DS_Store
+.tmp/

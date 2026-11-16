@@ -25,17 +25,17 @@ docs/
   04-订单状态机与并发难点.md
   05-前端方案.md
   06-里程碑与风险.md
-.tools/               便携版 Maven 与 MySQL，gitignore，本机自用
+.tools/               JDK、Maven、Node.js、pnpm 和便携版 MySQL，gitignore，缺什么 start.bat 自己下载
 ```
 
 数据库与设计文档已完成并在真实 MySQL 上验证过。后端与前端按 `docs/03` 与 `docs/05` 的规划推进，`server/` 是当前后端进度。
 
 ## 本地启动
 
-Windows 上直接双击或命令行执行 `start.bat`，它按顺序做四件事：确认 JDK 17 以上、定位 Maven 与 MySQL、把库准备好、前台启动后端。
+Windows 上直接双击或命令行执行 `start.bat`，它按顺序做四件事：定位 JDK 17、Maven、Node.js 和 MySQL，缺的自己下载进 `.tools`；把库准备好；起后端；起前端 dev server 并打开浏览器。
 
 ```
-start.bat            备齐一切并启动后端，Ctrl+C 停应用
+start.bat            备齐工具链和库，起后端与前端，按任意键收掉这次拉起的服务
 start.bat db         只把数据库拉起来并确认有表
 start.bat reset      删表重建、重新灌种子数据
 start.bat check      静态校验、Flyway 一致性比对、真实 MySQL 行为测试
@@ -46,7 +46,9 @@ start.bat help       用法说明
 
 停的方式分两种。应用窗口还在，就在里面按 Ctrl+C，Spring Boot 会走优雅关闭，等手头请求处理完再退出，数据库不受影响，可以再 `start.bat` 重启一次应用。窗口已经关了或者找不到，就 `start.bat stop`，它把自己拉起过的东西一次收干净：8080 上的后端、5174 上的前端 dev server，最后用 `mysqladmin shutdown` 关库。每个都按端口找到进程，先好声好气地请它退，请不动才连进程树一起强制结束，数据库靠 InnoDB 自己的崩溃恢复也不会坏，但别把拔窗口当成常规手段。`start.bat stop` 可以重复执行，某一项没有东西在跑就报一句 nothing listening 然后接着收下一项。
 
-依赖的定位顺序是：JDK 先看 `JAVA_HOME` 再看 `PATH`；Maven 先用 `.tools\apache-maven-*`，没有再用 `PATH` 上的 `mvn`；MySQL 同理，先找 `.tools\mysql-*`。`.tools` 是 gitignore 的，重新克隆后要自己放：解压 `apache-maven-3.9.9-bin.zip` 成 `.tools\apache-maven-3.9.9`，解压 `mysql-8.0.40-winx64.zip` 成 `.tools\mysql-8.0.40-winx64`。找到便携版 MySQL 时脚本会全自动完成 `--initialize-insecure`、生成 `my-3307.ini`、启库、导 `schema.sql` 与 `seed.sql`，库地址 `127.0.0.1:3307`，用户 `root`，空密码，仅限本机开发。
+依赖的定位顺序是：JDK 先找 `.tools\jdk-*`，再看 `JAVA_HOME` 和 `PATH` 上的 `javac`；Maven、Node.js、MySQL 同理，先找 `.tools` 下对应的目录，再看 `PATH`；pnpm 先找 `.tools\bin`。全都没有就下载：Adoptium 或微软的 JDK 17、Apache 的 Maven、nodejs.org 或 npmmirror 的 Node.js、MySQL 官网的 8.0.40 便携版，解压到 `.tools`，用系统自带的 `curl.exe` 和 `tar.exe`，不需要装任何东西。`.tools` 是 gitignore 的，新克隆的仓库里它是空的，所以第一次运行要下 470 MB 左右，JDK 190 MB 和 MySQL 240 MB 是大头，窗口开着等它下完。不想让脚本联网就 `set AUTO_INSTALL=0`，它只打印手动放置的路径。找到便携版 MySQL 时脚本会全自动完成 `--initialize-insecure`、生成 `my-<端口>.ini`、启库、导 `schema.sql` 与 `seed.sql`，库地址 `127.0.0.1:3307`，用户 `root`，空密码，仅限本机开发；用你自己已经跑着的 MySQL 就把 `mysql.exe` 放到 `PATH` 上，脚本不碰它，必要时用 `SO_DB_URL` 指全串 jdbc 地址。
+
+后端和前端各自跑在最小化窗口里，输出分别写 `.tools\backend.log` 和 `.tools\web.log`。端口在给定时间内没起来，脚本会把日志尾部打回这个窗口，并照实说没起来，不会假装启动成功；`OPEN_WEB=0` 只开服务不开浏览器，`START_WEB=0` 连前端 dev server 也不起。
 
 库里已有表时启动不会重复导入，要重建用 `start.bat reset`。首次启动会下载 Maven 依赖，需要联网。应用起来后看 `http://localhost:8080/api/v1/system/health`，它回的是数据库真实状态：会话时区、隔离级别、业务表数与 Flyway 版本。
 

@@ -23,12 +23,14 @@ export class ApiError extends Error {
 export type TokenSource = () => string | null;
 export type UnauthorizedHandler = (error: ApiError) => void;
 export type ServerTimeHandler = (iso: string) => void;
+export type RefreshHandler = () => Promise<boolean>;
 
 export interface RequestDefaults {
   baseUrl: string;
   token: TokenSource;
   onUnauthorized: UnauthorizedHandler;
   onServerTime: ServerTimeHandler;
+  refresh: RefreshHandler | null;
 }
 
 const config: RequestDefaults = {
@@ -36,6 +38,7 @@ const config: RequestDefaults = {
   token: () => null,
   onUnauthorized: () => {},
   onServerTime: (iso) => syncServerClock(iso),
+  refresh: null,
 };
 
 export function configureRequest(next: Partial<RequestDefaults>): void {
@@ -76,7 +79,12 @@ function traceOf(envelope: Envelope<unknown>, headers: Headers): string {
   return envelope.traceId || header;
 }
 
-export async function request<T>(method: string, path: string, options: RequestOptions = {}): Promise<T> {
+export async function request<T>(
+  method: string,
+  path: string,
+  options: RequestOptions = {},
+  retried = false,
+): Promise<T> {
   const headers: Record<string, string> = { Accept: "application/json", ...options.headers };
   const token = options.withToken === false ? null : config.token();
   if (token) {
@@ -138,6 +146,10 @@ export async function request<T>(method: string, path: string, options: RequestO
       response.status,
     );
     if (error.unauthorized) {
+      const canRetry = !retried && options.withToken !== false && config.refresh !== null;
+      if (canRetry && (await config.refresh?.())) {
+        return request<T>(method, path, options, true);
+      }
       config.onUnauthorized(error);
     }
     throw error;

@@ -35,6 +35,8 @@ public enum ErrorCode {
     ORDER_TOO_MANY_ITEMS(30013, "一张订单的菜品数超过上限"),
     STOCK_NOT_ENOUGH(30020, "库存不够了"),
     CART_EMPTY(30030, "购物车是空的"),
+    CATEGORY_NOT_EMPTY(30041, "这个分类下还有菜品，先把菜品移走"),
+    DISH_NAME_DUPLICATE(30042, "菜名在本档口已经用过了，换一个"),
     ORDER_NOT_FOUND(30100, "订单不存在"),
     ORDER_NOT_OWNER(30101, "只能操作自己的订单"),
     ORDER_STATUS_ILLEGAL(30102, "订单当前状态不支持该操作"),

@@ -10,12 +10,12 @@ ALTER TABLE `u_user` ADD UNIQUE KEY `uk_u_user_student_no` (`student_no`);
 
 -- 种子学生的初始密码为学号后 6 位,上线前必须全部重置
 UPDATE `u_user`
-   SET `password_hash` = '$2a$10$qj.XeWHJiwx4DDhm1jxOt.oQlB4st4.TFpZxuYwX7k76TwHKIet02',
+   SET `password_hash` = '$pbkdf2-sha256$120000$KrwmkuZYnoiUBMOipunhYA==$TVt1g/3rVvippGHH3Xgv5n2eCgdkSzbD8UyK6gLuzyQ=',
        `auth_source` = 3
  WHERE `student_no` = '2022010101';
 
 UPDATE `u_user`
-   SET `password_hash` = '$2a$10$s.Qs8zJdjZi2TkR2UqTNIORkxN9QAb0JX8exXtJO4lFF7Kly5q8x2',
+   SET `password_hash` = '$pbkdf2-sha256$120000$P6rSLLZbEjkQHuXctfqR+Q==$XnADYOEnGiXu4pfLNGgYUajdS3+nUqPLlkdm8lY2Bbo=',
        `auth_source` = 3
  WHERE `student_no` = '2022010102';
 

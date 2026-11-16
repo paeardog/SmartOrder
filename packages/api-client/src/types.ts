@@ -741,7 +741,7 @@ export interface DishSaveRequest {
   tags: string[];
   recommended: boolean;
   status: DishStatus;
-  sortWeight: number;
+  sortWeight?: number;
   groups: DishGroupSaveRequest[];
 }
 

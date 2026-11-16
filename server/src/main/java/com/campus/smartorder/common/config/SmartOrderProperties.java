@@ -27,7 +27,8 @@ public record SmartOrderProperties(String zoneId, Order order, Payment payment, 
     public record Payment(String enabledChannels, String callbackBaseUrl) {
     }
 
-    public record Security(Duration accessTokenTtl, Duration refreshTokenTtl, String jwtSecret, String issuer) {
+    public record Security(Duration accessTokenTtl, Duration refreshTokenTtl, String jwtSecret, String issuer,
+                           String devAccountPassword) {
     }
 
     public record Messaging(boolean smsEnabled, String smsAccessKey, String smsAccessSecret, String smsSignName) {
