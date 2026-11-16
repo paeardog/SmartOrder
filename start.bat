@@ -14,9 +14,9 @@ set "PROBE_FILE=%TOOLS%\probe.txt"
 set "DB_NAME=smartorder"
 set "DB_HOST=127.0.0.1"
 set "DB_USER=root"
-set "APP_PORT=8080"
-set "WEB_PORT=5174"
-set "OPEN_WEB=1"
+if not defined APP_PORT set "APP_PORT=8080"
+if not defined WEB_PORT set "WEB_PORT=5174"
+if not defined OPEN_WEB set "OPEN_WEB=1"
 set "MAVEN_OPTS=-Duser.language=en -Duser.country=US"
 
 set "MODE=%~1"
@@ -95,14 +95,19 @@ goto :bye_ok
 :do_start
 call :prepare_db
 if errorlevel 1 goto :bye_fail
+set "BACKEND_STARTED=0"
+set "WEB_STARTED=0"
 echo.
 echo Starting backend, then the web dev server, then the browser.
-echo Close this window or press a key to stop both (mysqld keeps running).
+echo Close this window or press a key to stop the services this run started.
 echo health    http://localhost:%APP_PORT%/api/v1/system/health
 echo web       http://127.0.0.1:%WEB_PORT%
 echo.
 
-rem --- start backend in a separate minimized window ---
+rem --- start backend in a separate minimized window, unless it already answers ---
+call :port_listening %APP_PORT%
+if "%PORT_UP%"=="1" goto :backend_up
+set "BACKEND_STARTED=1"
 if defined RUN_ARGS (
   start "SmartOrder-Backend" /MIN cmd /c call "%MVN%" -B -f "%SERVER_POM%" spring-boot:run %RUN_ARGS%
 ) else (
@@ -130,6 +135,7 @@ if not exist "%ROOT%\apps\web\package.json" goto :done_start
 rem --- start web dev server unless something already listens on WEB_PORT ---
 call :port_listening %WEB_PORT%
 if "%PORT_UP%"=="1" goto :open_web
+set "WEB_STARTED=1"
 echo web       starting vite dev server on %WEB_PORT% ...
 start "SmartOrder-Web" /MIN cmd /c "cd /d %ROOT% && pnpm dev:web"
 set /a WAIT=0
@@ -149,7 +155,7 @@ start "" "http://127.0.0.1:%WEB_PORT%"
 echo.
 echo SmartOrder is up. Backend http://localhost:%APP_PORT%  Web http://127.0.0.1:%WEB_PORT%
 echo.
-echo Press any key to stop the backend and web windows...
+echo Press any key to stop the services this run started (mysqld keeps running)...
 pause >nul
 call :stop_started
 goto :bye_ok
@@ -161,8 +167,8 @@ if not errorlevel 1 set "PORT_UP=1"
 exit /b 0
 
 :stop_started
-call :kill_port %APP_PORT%
-call :kill_port %WEB_PORT%
+if "%BACKEND_STARTED%"=="1" call :kill_port %APP_PORT%
+if "%WEB_STARTED%"=="1" call :kill_port %WEB_PORT%
 exit /b 0
 
 :kill_port
