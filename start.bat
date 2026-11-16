@@ -67,8 +67,11 @@ goto :bye_ok
 
 :do_stop
 call :build_client_args
-call :stop_app
-set "STOP_RC=%ERRORLEVEL%"
+set "STOP_RC=0"
+call :stop_service app %APP_PORT%
+if errorlevel 1 set "STOP_RC=1"
+call :stop_service web %WEB_PORT%
+if errorlevel 1 set "STOP_RC=1"
 call :stop_db
 if errorlevel 1 set "STOP_RC=1"
 if "%STOP_RC%"=="0" goto :bye_ok
@@ -162,22 +165,13 @@ goto :bye_ok
 
 :port_listening
 set "PORT_UP=0"
-netstat -ano | findstr /R "LISTENING" | findstr ":%~1 " >nul 2>&1
-if not errorlevel 1 set "PORT_UP=1"
+call :find_pid %~1
+if defined FOUND_PID set "PORT_UP=1"
 exit /b 0
 
 :stop_started
-if "%BACKEND_STARTED%"=="1" call :kill_port %APP_PORT%
-if "%WEB_STARTED%"=="1" call :kill_port %WEB_PORT%
-exit /b 0
-
-:kill_port
-set "KILL_PID="
-for /f "tokens=5" %%P in ('netstat -ano ^| findstr /R "LISTENING" ^| findstr ":%~1 "') do if not defined KILL_PID set "KILL_PID=%%P"
-if defined KILL_PID (
-  echo stopping pid %KILL_PID% on port %~1
-  taskkill /t /f /pid %KILL_PID% >nul 2>&1
-)
+if "%BACKEND_STARTED%"=="1" call :stop_service app %APP_PORT%
+if "%WEB_STARTED%"=="1" call :stop_service web %WEB_PORT%
 exit /b 0
 
 :resolve_java
@@ -423,39 +417,34 @@ call npm run test:db
 if errorlevel 1 exit /b 1
 exit /b 0
 
-:stop_app
-call :find_app_pid
-if not defined APP_PID (
-  echo app       nothing listening on %APP_PORT%
+:stop_service
+call :find_pid %2
+if not defined FOUND_PID (
+  echo %~1       nothing listening on port %2
   exit /b 0
 )
-echo app       pid %APP_PID% holds port %APP_PORT%
-taskkill /pid %APP_PID% >nul 2>&1
+echo %~1       pid %FOUND_PID% holds port %2
+taskkill /pid %FOUND_PID% >nul 2>&1
 ping -n 4 127.0.0.1 >nul
-call :find_app_pid
-if not defined APP_PID (
-  echo app       stopped
+call :find_pid %2
+if not defined FOUND_PID (
+  echo %~1       stopped
   exit /b 0
 )
-echo app       pid %APP_PID% ignored the request, forcing it down
-taskkill /f /pid %APP_PID% >nul 2>&1
+echo %~1       pid %FOUND_PID% ignored the request, forcing the process tree down
+taskkill /t /f /pid %FOUND_PID% >nul 2>&1
 ping -n 3 127.0.0.1 >nul
-call :find_app_pid
-if defined APP_PID (
-  echo app       pid %APP_PID% is still there, close it by hand
+call :find_pid %2
+if defined FOUND_PID (
+  echo %~1       pid %FOUND_PID% is still there, close it by hand
   exit /b 1
 )
-echo app       forced down
+echo %~1       forced down
 exit /b 0
 
-:find_app_pid
-netstat -ano > "%PROBE_FILE%" 2>&1
-set "APP_PID="
-for /f "usebackq tokens=1,2,4,5" %%A in ("%PROBE_FILE%") do (
-  if "%%A"=="TCP" if "%%C"=="LISTENING" if not defined APP_PID if "%%B"=="0.0.0.0:%APP_PORT%" set "APP_PID=%%D"
-  if "%%A"=="TCP" if "%%C"=="LISTENING" if not defined APP_PID if "%%B"=="[::]:%APP_PORT%" set "APP_PID=%%D"
-)
-del "%PROBE_FILE%" >nul 2>&1
+:find_pid
+set "FOUND_PID="
+for /f "tokens=5" %%P in ('netstat -ano ^| findstr /R /C:":%~1 .*LISTENING"') do if not defined FOUND_PID set "FOUND_PID=%%P"
 exit /b 0
 
 :usage
@@ -467,7 +456,8 @@ echo   start.bat db         only bring the database up and make sure it is popul
 echo   start.bat reset      drop every table, re-import schema.sql and seed.sql
 echo   start.bat check      static check, flyway diff and the real MySQL test suite
 echo   start.bat build      prepare the database, then package the jar without running it
-echo   start.bat stop       stop the backend on 8080 and the portable mysqld, in that order
+echo   start.bat stop       stop the backend on 8080, the web dev server on 5174
+echo                        and the portable mysqld, in that order
 echo   start.bat help       this text
 echo.
 echo Toolchain lookup order: JAVA_HOME then PATH for the JDK; .tools\apache-maven-*

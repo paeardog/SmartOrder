@@ -40,11 +40,11 @@ start.bat db         只把数据库拉起来并确认有表
 start.bat reset      删表重建、重新灌种子数据
 start.bat check      静态校验、Flyway 一致性比对、真实 MySQL 行为测试
 start.bat build      打成 jar 验证编译链路，不启动服务
-start.bat stop       先收 8080 上的后端，再干净关掉便携版 mysqld
+start.bat stop       依次收 8080 上的后端、5174 上的前端，再干净关掉便携版 mysqld
 start.bat help       用法说明
 ```
 
-停的方式分两种。应用窗口还在，就在里面按 Ctrl+C，Spring Boot 会走优雅关闭，等手头请求处理完再退出，数据库不受影响，可以再 `start.bat` 重启一次应用。窗口已经关了或者找不到，就 `start.bat stop`，它按端口找到进程先好声好气地请它退，请不动才强制结束，最后用 `mysqladmin shutdown` 关库，数据库靠 InnoDB 自己的崩溃恢复也不会坏，但别把拔窗口当成常规手段。`start.bat stop` 可以重复执行，没有东西在跑就报一句 nothing listening 然后正常退出。
+停的方式分两种。应用窗口还在，就在里面按 Ctrl+C，Spring Boot 会走优雅关闭，等手头请求处理完再退出，数据库不受影响，可以再 `start.bat` 重启一次应用。窗口已经关了或者找不到，就 `start.bat stop`，它把自己拉起过的东西一次收干净：8080 上的后端、5174 上的前端 dev server，最后用 `mysqladmin shutdown` 关库。每个都按端口找到进程，先好声好气地请它退，请不动才连进程树一起强制结束，数据库靠 InnoDB 自己的崩溃恢复也不会坏，但别把拔窗口当成常规手段。`start.bat stop` 可以重复执行，某一项没有东西在跑就报一句 nothing listening 然后接着收下一项。
 
 依赖的定位顺序是：JDK 先看 `JAVA_HOME` 再看 `PATH`；Maven 先用 `.tools\apache-maven-*`，没有再用 `PATH` 上的 `mvn`；MySQL 同理，先找 `.tools\mysql-*`。`.tools` 是 gitignore 的，重新克隆后要自己放：解压 `apache-maven-3.9.9-bin.zip` 成 `.tools\apache-maven-3.9.9`，解压 `mysql-8.0.40-winx64.zip` 成 `.tools\mysql-8.0.40-winx64`。找到便携版 MySQL 时脚本会全自动完成 `--initialize-insecure`、生成 `my-3307.ini`、启库、导 `schema.sql` 与 `seed.sql`，库地址 `127.0.0.1:3307`，用户 `root`，空密码，仅限本机开发。
 
