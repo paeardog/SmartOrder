@@ -22,6 +22,9 @@ UPDATE `u_user`
 ALTER TABLE `o_order`
     ADD COLUMN `coupon_id` BIGINT UNSIGNED NULL COMMENT '本单核销的用户券 id,未用券为 NULL' AFTER `discount_amount`;
 
+ALTER TABLE `o_review`
+    ADD COLUMN `tags` VARCHAR(255) NOT NULL DEFAULT '' COMMENT '评价标签,逗号分隔' AFTER `content`;
+
 CREATE TABLE IF NOT EXISTS `u_address` (
   `id`            BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
   `user_id`       BIGINT UNSIGNED NOT NULL,

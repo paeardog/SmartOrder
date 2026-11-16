@@ -1,6 +1,6 @@
 schema    C:\DesktopFile\Smartorder\db\schema.sql
-语句块    67 → 解析成功 63,跳过 4(SET/USE),失败 0
-规模      31 表 / 411 列 / 68 索引(唯一 24) / 20 外键
+语句块    70 → 解析成功 66,跳过 4(SET/USE),失败 0
+规模      34 表 / 449 列 / 71 索引(唯一 25) / 23 外键
 seed      seed.sql → 58 语句块,23 条 INSERT 解析成功,写入 23 张表共 185 行
 
 表清单
@@ -13,6 +13,7 @@ seed      seed.sql → 58 语句块,23 条 INSERT 解析成功,写入 23 张表�
   u_auth_token           列  9  索引  2  外键 1  刷新令牌轮换
   u_pickup_point         列 13  索引  1  外键 0  自提点
   u_favorite             列  5  索引  1  外键 1  收藏
+  u_address              列 13  索引  1  外键 1  收货地址簿
   m_merchant             列 24  索引  2  外键 0  商家档口
   m_business_hours       列 10  索引  1  外键 1  营业时段
   m_date_override        列  9  索引  1  外键 1  临时营业调整
@@ -22,11 +23,13 @@ seed      seed.sql → 58 语句块,23 条 INSERT 解析成功,写入 23 张表�
   m_dish_option          列 10  索引  2  外键 1  规格项与加料项
   m_dish_stock           列  8  索引  2  外键 1  每日库存
   u_cart_item            列 10  索引  2  外键 1  服务端购物车
-  o_order                列 37  索引  7  外键 0  订单主表
+  o_order                列 38  索引  7  外键 0  订单主表
   o_order_item           列 16  索引  2  外键 1  订单明细快照
   o_order_status_log     列 10  索引  2  外键 1  订单状态流转日志
   o_refund               列 17  索引  3  外键 1  退款单
   o_review               列 15  索引  3  外键 1  订单评价
+  mk_coupon_template     列 13  索引  1  外键 0  优惠券模板
+  mk_user_coupon         列 11  索引  1  外键 2  用户持有券
   p_payment              列 16  索引  4  外键 1  支付流水
   p_callback_log         列 13  索引  2  外键 0  渠道回调日志
   d_rider                列 12  索引  2  外键 1  骑手
@@ -42,7 +45,8 @@ seed      seed.sql → 58 语句块,23 条 INSERT 解析成功,写入 23 张表�
 警告 WARN (0)
   无
 
-提示 INFO (3)
+提示 INFO (4)
   [u_user] 唯一索引 uk_u_user_phone 含可空列 phone:NULL 不参与唯一约束,确认是有意为之
+  [u_user] 唯一索引 uk_u_user_student_no 含可空列 student_no:NULL 不参与唯一约束,确认是有意为之
   [o_order] 唯一索引 uk_o_pickup_code 含可空列 pickup_code:NULL 不参与唯一约束,确认是有意为之
   [d_rider] 唯一索引 uk_d_rider_user 含可空列 user_id:NULL 不参与唯一约束,确认是有意为之

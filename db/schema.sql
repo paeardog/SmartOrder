@@ -507,6 +507,7 @@ CREATE TABLE `o_review` (
   `taste_score`   TINYINT UNSIGNED NOT NULL DEFAULT 5 COMMENT '口味分',
   `speed_score`   TINYINT UNSIGNED NOT NULL DEFAULT 5 COMMENT '出餐速度分',
   `content`       VARCHAR(500)    NOT NULL DEFAULT '' COMMENT '评价正文',
+  `tags`          VARCHAR(255)    NOT NULL DEFAULT '' COMMENT '评价标签,逗号分隔',
   `image_json`    JSON            NULL COMMENT '晒图数组',
   `is_anonymous`  TINYINT         NOT NULL DEFAULT 0 COMMENT '1 匿名',
   `reply_content` VARCHAR(500)    NOT NULL DEFAULT '' COMMENT '商家回复',
