@@ -1,74 +1,60 @@
-import { createRouter, createWebHistory, type RouteRecordRaw } from "vue-router";
+import { createRouter, createWebHistory } from "vue-router";
 import { tokenStore } from "./stores/session";
 
-const routes: RouteRecordRaw[] = [
-  {
-    path: "/",
-    name: "home",
-    component: () => import("./views/HomeView.vue"),
-    meta: { title: "首页", icon: "home" },
-  },
-  {
-    path: "/merchants",
-    name: "merchants",
-    component: () => import("./views/MerchantsView.vue"),
-    meta: { title: "商户列表", icon: "shop" },
-  },
-  {
-    path: "/merchant/:id",
-    name: "menu",
-    component: () => import("./views/MenuView.vue"),
-    props: true,
-    meta: { title: "菜单", hidden: true },
-  },
-  {
-    path: "/cart",
-    name: "cart",
-    component: () => import("./views/CartView.vue"),
-    meta: { title: "购物车", icon: "cart" },
-  },
+const routes = [
+  { path: "/", name: "home", component: () => import("./views/HomeView.vue"), meta: { title: "首页" } },
+  { path: "/merchants", name: "merchants", component: () => import("./views/MerchantsView.vue"), meta: { title: "全部商户" } },
+  { path: "/merchant/:id", name: "merchant", component: () => import("./views/MenuView.vue"), meta: { title: "档口" } },
+  { path: "/search", name: "search", component: () => import("./views/SearchView.vue"), meta: { title: "搜索" } },
+  { path: "/cart", name: "cart", component: () => import("./views/CartView.vue"), meta: { title: "购物车" } },
   {
     path: "/checkout",
     name: "checkout",
     component: () => import("./views/CheckoutView.vue"),
-    meta: { title: "确认订单", auth: true, hidden: true },
+    meta: { title: "确认订单", auth: true },
   },
   {
     path: "/pay/:orderNo",
     name: "pay",
     component: () => import("./views/PayView.vue"),
-    props: true,
-    meta: { title: "支付", auth: true, hidden: true },
+    meta: { title: "支付", auth: true },
   },
   {
-    path: "/orders",
-    name: "orders",
-    component: () => import("./views/OrdersView.vue"),
-    meta: { title: "我的订单", icon: "orders" },
+    path: "/pay-result/:orderNo",
+    name: "pay-result",
+    component: () => import("./views/PayResultView.vue"),
+    meta: { title: "支付结果", auth: true },
   },
+  { path: "/orders", name: "orders", component: () => import("./views/OrdersView.vue"), meta: { title: "我的订单" } },
   {
     path: "/order/:orderNo",
     name: "order",
     component: () => import("./views/OrderDetailView.vue"),
-    props: true,
-    meta: { title: "订单详情", auth: true, hidden: true },
+    meta: { title: "订单详情", auth: true },
   },
   {
-    path: "/profile",
-    name: "profile",
-    component: () => import("./views/ProfileView.vue"),
-    meta: { title: "个人中心", icon: "user" },
+    path: "/review/:orderNo",
+    name: "review",
+    component: () => import("./views/ReviewView.vue"),
+    meta: { title: "评价订单", auth: true },
   },
+  { path: "/coupons", name: "coupons", component: () => import("./views/CouponsView.vue"), meta: { title: "优惠券", auth: true } },
   {
-    path: "/login",
-    name: "login",
-    component: () => import("./views/LoginView.vue"),
-    meta: { title: "登录", hidden: true },
+    path: "/favorites",
+    name: "favorites",
+    component: () => import("./views/FavoritesView.vue"),
+    meta: { title: "我的收藏", auth: true },
   },
+  { path: "/notices", name: "notices", component: () => import("./views/NoticesView.vue"), meta: { title: "消息通知", auth: true } },
   {
-    path: "/:pathMatch(.*)*",
-    redirect: "/",
+    path: "/address",
+    name: "address",
+    component: () => import("./views/AddressView.vue"),
+    meta: { title: "收货地址", auth: true },
   },
+  { path: "/profile", name: "profile", component: () => import("./views/ProfileView.vue"), meta: { title: "我的" } },
+  { path: "/login", name: "login", component: () => import("./views/LoginView.vue"), meta: { title: "登录", bare: true } },
+  { path: "/:pathMatch(.*)*", redirect: "/" },
 ];
 
 export const router = createRouter({
@@ -83,10 +69,14 @@ router.beforeEach((to) => {
   if (to.meta["auth"] === true && tokenStore.access === "") {
     return { name: "login", query: { next: to.fullPath } };
   }
+  if (to.name === "login" && tokenStore.access !== "") {
+    const next = typeof to.query["next"] === "string" ? to.query["next"] : "";
+    return next === "" ? { name: "home" } : next;
+  }
   return true;
 });
 
 router.afterEach((to) => {
-  const title = typeof to.meta["title"] === "string" ? to.meta["title"] : "校园点单";
-  document.title = `${title} · 校园点单`;
+  const title = typeof to.meta["title"] === "string" ? to.meta["title"] : "";
+  document.title = title === "" ? "校园点单" : `${title} · 校园点单`;
 });

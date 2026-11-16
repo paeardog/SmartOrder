@@ -32,10 +32,11 @@
       <section class="login-card so-card">
         <van-field
           v-model="studentNo"
-          label="学号"
-          type="digit"
-          placeholder="请输入学号"
-          maxlength="12"
+          :label="mode === 'login' ? '账号' : '学号'"
+          :type="mode === 'login' ? 'text' : 'digit'"
+          :placeholder="mode === 'login' ? '请输入学号或用户名' : '请输入学号'"
+          maxlength="32"
+          autocomplete="username"
           class="login-field"
         />
         <van-field
@@ -74,7 +75,7 @@
 
       <div class="login-hint">
         <van-icon name="info-o" />
-        {{ mode === "login" ? "种子账号初始密码为学号后 6 位" : "学号 8-12 位，密码至少 6 位" }}
+        {{ hint }}
       </div>
     </div>
   </div>
@@ -97,8 +98,21 @@ const nickname = ref("");
 const showPassword = ref(false);
 const submitting = ref(false);
 
-const canSubmit = computed(
-  () => /^\d{8,12}$/.test(studentNo.value) && password.value.length >= 6,
+const isDev = import.meta.env.DEV;
+
+const canSubmit = computed(() => {
+  if (mode.value === "register") {
+    return /^\d{8,12}$/.test(studentNo.value) && password.value.length >= 6;
+  }
+  return studentNo.value.trim() !== "" && password.value !== "";
+});
+
+const hint = computed(() =>
+  mode.value === "register"
+    ? "学号 8-12 位，密码至少 6 位"
+    : isDev
+      ? "种子账号初始密码为学号后 6 位 · 演示账号 admin / admin"
+      : "种子账号初始密码为学号后 6 位",
 );
 
 function toggleMode(): void {

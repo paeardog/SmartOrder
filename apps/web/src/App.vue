@@ -1,56 +1,173 @@
 <script setup lang="ts">
-import { computed } from "vue";
-import { useRouter, useRoute } from "vue-router";
+import { computed, onMounted, ref, watch } from "vue";
+import { useRoute, useRouter } from "vue-router";
+import { notices as noticesApi } from "@smartorder/api-client";
+import AppIcon from "./components/AppIcon.vue";
+import ToastHost from "./components/ToastHost.vue";
 import { useCartStore } from "./stores/cart";
+import { useCampusStore } from "./stores/campus";
+import { useOrderStore } from "./stores/orders";
+import { tokenStore } from "./stores/session";
+import { lastKeyword } from "./utils/search";
 
-const router = useRouter();
 const route = useRoute();
+const router = useRouter();
 const cart = useCartStore();
+const campus = useCampusStore();
+const orders = useOrderStore();
+
+const keyword = ref(lastKeyword());
+const unread = ref(0);
+
+const bare = computed(() => route.meta["bare"] === true);
+const signedIn = computed(() => tokenStore.access !== "");
+const nickname = computed(() => tokenStore.profile?.nickname ?? "同学");
+const initial = computed(() => nickname.value.slice(0, 1));
 
 const navItems = [
-  { path: "/", name: "home", title: "首页", icon: "M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6" },
-  { path: "/merchants", name: "merchants", title: "商户", icon: "M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" },
-  { path: "/cart", name: "cart", title: "购物车", icon: "M3 3h2l.4 2M7 13h10l4-8H5.4M7 13L5.4 5M7 13l-2.293 2.293c-.63.63-.184 1.707.707 1.707H17m0 0a2 2 0 100 4 2 2 0 000-4zm-8 2a2 2 0 11-4 0 2 2 0 014 0z" },
-  { path: "/orders", name: "orders", title: "订单", icon: "M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-3 7h3m-3 4h3m-6-4h.01M9 16h.01" },
-  { path: "/profile", name: "profile", title: "我的", icon: "M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" },
+  { name: "home", label: "首页", icon: "home" },
+  { name: "merchants", label: "全部商户", icon: "store" },
+  { name: "cart", label: "购物车", icon: "cart" },
+  { name: "orders", label: "我的订单", icon: "receipt" },
+  { name: "favorites", label: "我的收藏", icon: "heart" },
+  { name: "coupons", label: "优惠券", icon: "ticket" },
+  { name: "notices", label: "消息通知", icon: "bell" },
+  { name: "profile", label: "我的", icon: "user" },
 ];
 
-const activePath = computed(() => route.path);
-const cartBadge = computed(() => cart.selectedCount);
+const activeName = computed(() => String(route.name ?? ""));
 
-function navigate(path: string): void {
-  void router.push(path);
+function go(name: string): void {
+  if (activeName.value === name) {
+    return;
+  }
+  void router.push({ name });
 }
+
+function submitSearch(): void {
+  const text = keyword.value.trim();
+  if (text === "") {
+    return;
+  }
+  void router.push({ name: "search", query: { q: text } });
+}
+
+async function loadUnread(): Promise<void> {
+  if (!signedIn.value) {
+    unread.value = 0;
+    return;
+  }
+  try {
+    const list = await noticesApi.list();
+    unread.value = list.filter((item) => !item.readFlag).length;
+  } catch {
+    unread.value = 0;
+  }
+}
+
+const streaming = computed(() => signedIn.value && (route.name === "orders" || route.name === "order"));
+
+function syncStream(): void {
+  if (streaming.value) {
+    orders.startStream(tokenStore.access);
+    return;
+  }
+  orders.stopStream();
+}
+
+watch([signedIn, streaming], () => {
+  syncStream();
+  void loadUnread();
+  void syncCart();
+});
+
+function syncCart(): void {
+  if (!signedIn.value) {
+    cart.reset();
+    return;
+  }
+  void cart.reload();
+}
+
+watch(
+  () => route.fullPath,
+  () => {
+    if (!signedIn.value) {
+      return;
+    }
+    void loadUnread();
+  },
+);
+
+onMounted(() => {
+  syncStream();
+  syncCart();
+  void campus.loadAreas();
+  void loadUnread();
+  window.addEventListener("pagehide", () => orders.stopStream());
+});
 </script>
 
 <template>
   <div class="so-layout">
-    <aside class="so-sidebar">
-      <div class="so-sidebar__header">
-        <div class="so-sidebar__logo">校园点单</div>
-      </div>
+    <aside v-if="!bare" class="so-sidebar">
+      <header class="so-sidebar__header">
+        <p class="so-sidebar__logo">校园点单</p>
+      </header>
       <nav class="so-sidebar__nav">
         <button
           v-for="item in navItems"
           :key="item.name"
+          type="button"
           class="so-nav-item"
-          :class="{ 'so-nav-item--active': activePath === item.path }"
-          @click="navigate(item.path)"
+          :class="{ 'so-nav-item--active': activeName === item.name }"
+          @click="go(item.name)"
         >
-          <span class="so-nav-item__icon">
-            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-              <path stroke-linecap="round" stroke-linejoin="round" :d="item.icon" />
-            </svg>
-          </span>
-          <span>{{ item.title }}</span>
-          <span v-if="item.name === 'cart' && cartBadge > 0" class="so-tag so-tag--info" style="margin-left: auto;">
-            {{ cartBadge }}
-          </span>
+          <span class="so-nav-item__icon"><AppIcon :name="item.icon" :size="18" /></span>
+          <span class="so-nav-item__label">{{ item.label }}</span>
+          <span v-if="item.name === 'cart' && cart.itemCount > 0" class="so-badge so-nav-item__count">{{ cart.itemCount }}</span>
         </button>
       </nav>
+      <footer class="so-sidebar__foot">自取点单 · 到店取餐</footer>
     </aside>
-    <main class="so-main">
-      <router-view />
-    </main>
+
+    <div class="so-shell">
+      <header v-if="!bare" class="so-topbar">
+        <label class="so-searchbox">
+          <AppIcon name="search" :size="16" />
+          <input v-model="keyword" type="search" placeholder="搜菜品、档口" @keyup.enter="submitSearch" />
+        </label>
+        <span class="so-topbar__grow" />
+        <select
+          class="so-select"
+          style="width: 148px"
+          :value="campus.area"
+          aria-label="校区"
+          @change="campus.setArea(($event.target as HTMLSelectElement).value)"
+        >
+          <option value="">全部校区</option>
+          <option v-for="item in campus.areas" :key="item" :value="item">{{ item }}</option>
+        </select>
+        <button type="button" class="so-icon-btn" aria-label="消息通知" @click="go('notices')">
+          <AppIcon name="bell" :size="18" />
+          <span v-if="unread > 0" class="so-badge" style="position: absolute; transform: translate(12px, -12px)">{{ unread }}</span>
+        </button>
+        <button type="button" class="so-icon-btn" aria-label="购物车" @click="go('cart')">
+          <AppIcon name="cart" :size="18" />
+          <span v-if="cart.itemCount > 0" class="so-badge" style="position: absolute; transform: translate(12px, -12px)">{{ cart.itemCount }}</span>
+        </button>
+        <button v-if="signedIn" type="button" class="so-btn so-btn--ghost so-btn--sm" @click="go('profile')">
+          <span class="so-avatar">{{ initial }}</span>
+          {{ nickname }}
+        </button>
+        <button v-else type="button" class="so-btn so-btn--primary so-btn--sm" @click="go('login')">登录</button>
+      </header>
+
+      <main class="so-main">
+        <router-view />
+      </main>
+    </div>
+
+    <ToastHost />
   </div>
 </template>

@@ -1,77 +1,126 @@
 <script setup lang="ts">
 import { ref } from "vue";
-import { useRouter, useRoute } from "vue-router";
-import { setTokens, setProfile } from "../stores/session";
+import { useRoute, useRouter } from "vue-router";
+import AppIcon from "../components/AppIcon.vue";
+import { signIn, signUp } from "../stores/session";
+import { reportError, textOf } from "../utils/report";
 
-const router = useRouter();
 const route = useRoute();
+const router = useRouter();
 
-const phone = ref("");
-const code = ref("");
-const loading = ref(false);
-const countdown = ref(0);
+const mode = ref<"login" | "register">("login");
+const studentNo = ref("");
+const password = ref("");
+const nickname = ref("");
+const revealed = ref(false);
+const busy = ref(false);
+const errorText = ref("");
 
-async function sendCode(): Promise<void> {
-  if (!phone.value || countdown.value > 0) return;
-  countdown.value = 60;
-  const timer = setInterval(() => {
-    countdown.value -= 1;
-    if (countdown.value <= 0) clearInterval(timer);
-  }, 1000);
+const STUDENT_NO = /^\d{8,12}$/;
+
+function switchMode(next: "login" | "register"): void {
+  mode.value = next;
+  errorText.value = "";
 }
 
-async function login(): Promise<void> {
-  if (!phone.value || !code.value) return;
-  loading.value = true;
+function nextPath(): string {
+  return typeof route.query["next"] === "string" && route.query["next"] !== "" ? route.query["next"] : "/";
+}
+
+function validate(): string {
+  if (studentNo.value.trim() === "") {
+    return "请填写学号";
+  }
+  if (mode.value === "register" && !STUDENT_NO.test(studentNo.value.trim())) {
+    return "学号应为 8-12 位数字";
+  }
+  if (password.value === "") {
+    return "请填写密码";
+  }
+  if (mode.value === "register" && password.value.length < 6) {
+    return "密码至少 6 位";
+  }
+  return "";
+}
+
+async function submit(): Promise<void> {
+  if (busy.value) {
+    return;
+  }
+  const reason = validate();
+  if (reason !== "") {
+    errorText.value = reason;
+    return;
+  }
+  busy.value = true;
+  errorText.value = "";
   try {
-    setTokens("mock_token_123", "mock_refresh_456");
-    setProfile({
-      id: "user_001",
-      name: "测试用户",
-      phone: phone.value,
-      campusArea: "中心校区",
-      verifyStatus: 2,
-    });
-    const next = (route.query["next"] as string) ?? "/";
-    void router.replace(next);
+    if (mode.value === "login") {
+      await signIn(studentNo.value, password.value);
+    } else {
+      await signUp(studentNo.value, password.value, nickname.value);
+    }
+    await router.replace(nextPath());
   } catch (error) {
-    console.error(error);
+    reportError(error);
+    errorText.value = textOf(error);
   } finally {
-    loading.value = false;
+    busy.value = false;
   }
 }
 </script>
 
 <template>
-  <div style="max-width: 400px; margin: 4rem auto; padding: 0 1rem;">
-    <div style="text-align: center; margin-bottom: 2rem;">
-      <h1 style="font-size: 2rem; font-weight: var(--font-weight-bold); color: var(--primary); margin-bottom: 0.5rem;">校园点单</h1>
-      <p style="color: var(--muted);">登录以继续</p>
-    </div>
+  <div class="so-login">
+    <section class="so-login__card">
+      <p class="so-login__brand">校园点单</p>
+      <p class="so-login__hint">登录后可以预点单、查看出餐进度、到店自取。</p>
 
-    <div class="so-card">
-      <div class="so-card__body">
-        <div style="margin-bottom: 1rem;">
-          <label style="display: block; font-size: 0.9rem; margin-bottom: 0.5rem; color: var(--content-meta);">手机号</label>
-          <input v-model="phone" type="tel" placeholder="请输入手机号" style="width: 100%; padding: 0.75rem; border: 1px solid var(--line-divider); border-radius: var(--control-radius); background: var(--card-bg); color: var(--deep-text);" />
-        </div>
-        <div style="margin-bottom: 1.5rem;">
-          <label style="display: block; font-size: 0.9rem; margin-bottom: 0.5rem; color: var(--content-meta);">验证码</label>
-          <div style="display: flex; gap: 0.75rem;">
-            <input v-model="code" type="text" placeholder="请输入验证码" style="flex: 1; padding: 0.75rem; border: 1px solid var(--line-divider); border-radius: var(--control-radius); background: var(--card-bg); color: var(--deep-text);" />
-            <button class="so-btn so-btn--secondary" :disabled="countdown > 0 || !phone" @click="sendCode">
-              {{ countdown > 0 ? `${countdown}s` : "发送验证码" }}
-            </button>
-          </div>
-        </div>
-        <button class="so-btn so-btn--primary" style="width: 100%; padding: 0.75rem;" :disabled="loading || !phone || !code" @click="login">
-          {{ loading ? "登录中..." : "登录" }}
+      <div class="so-tabs" style="margin-top: 1.5rem">
+        <button type="button" class="so-tab" :class="{ 'so-tab--active': mode === 'login' }" @click="switchMode('login')">
+          学号登录
+        </button>
+        <button type="button" class="so-tab" :class="{ 'so-tab--active': mode === 'register' }" @click="switchMode('register')">
+          注册新账号
         </button>
       </div>
-    </div>
 
-    <div style="text-align: center; margin-top: 1rem; font-size: 0.85rem; color: var(--muted);">
-      测试环境：任意手机号 + 验证码 888888
-    </div>
+      <form @submit.prevent="submit">
+        <label class="so-field">
+          <span class="so-field__label">学号</span>
+          <input v-model="studentNo" class="so-input" type="text" inputmode="numeric" autocomplete="username" placeholder="请输入学号" />
+        </label>
+
+        <label class="so-field">
+          <span class="so-field__label">密码</span>
+          <span class="so-input-group">
+            <input
+              v-model="password"
+              class="so-input"
+              :type="revealed ? 'text' : 'password'"
+              :autocomplete="mode === 'login' ? 'current-password' : 'new-password'"
+              :placeholder="mode === 'login' ? '请输入密码' : '至少 6 位'"
+            />
+            <button type="button" class="so-btn so-btn--secondary" @click="revealed = !revealed">
+              <AppIcon :name="revealed ? 'eyeoff' : 'eye'" :size="16" />
+              {{ revealed ? "隐藏" : "显示" }}
+            </button>
+          </span>
+        </label>
+
+        <label v-if="mode === 'register'" class="so-field">
+          <span class="so-field__label">昵称</span>
+          <input v-model="nickname" class="so-input" type="text" maxlength="20" placeholder="不填则由系统生成" />
+        </label>
+
+        <p v-if="errorText !== ''" class="so-error" style="margin-bottom: 0.75rem">{{ errorText }}</p>
+
+        <button class="so-btn so-btn--primary so-btn--block so-btn--lg" type="submit" :disabled="busy">
+          {{ busy ? "处理中" : mode === "login" ? "登录" : "注册并登录" }}
+        </button>
+      </form>
+
+      <p class="so-hint" style="margin-top: 1rem">种子账号初始密码为学号后 6 位 · 演示账号 admin / admin</p>
+    </section>
   </div>
 </template>
