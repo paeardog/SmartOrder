@@ -7,6 +7,7 @@ set "ROOT=%~dp0"
 if "%ROOT:~-1%"=="\" set "ROOT=%ROOT:~0,-1%"
 set "TOOLS=%ROOT%\.tools"
 set "SERVER_POM=%ROOT%\server\pom.xml"
+set "MIGRATION_DIR=%ROOT%\server\src\main\resources\db\migration"
 set "GRANTS_FILE=%TOOLS%\init-grants.sql"
 set "DATA_DIR=%TOOLS%\mysqldata"
 set "DL_DIR=%TOOLS%\downloads"
@@ -151,10 +152,10 @@ echo.
 
 call :port_listening %APP_PORT%
 if "%PORT_UP%"=="1" goto :backend_up
+if defined DB_PASS set "SPRING_DATASOURCE_PASSWORD=%DB_PASS%"
 if defined SO_DB_URL (
   set "SPRING_DATASOURCE_URL=%SO_DB_URL%"
   set "SPRING_DATASOURCE_USERNAME=%DB_USER%"
-  if defined DB_PASS set "SPRING_DATASOURCE_PASSWORD=%DB_PASS%"
 )
 set "BACKEND_STARTED=1"
 del "%APP_LOG%" >nul 2>&1
@@ -566,8 +567,9 @@ goto :mysql_system
 set "MYSQL_BIN=%MYSQL_HOME%\bin"
 set "MANAGED_DB=1"
 if not defined DB_PORT set "DB_PORT=3307"
+if not defined DB_PASS set "DB_PASS=123456"
 echo mysql     portable, %MYSQL_HOME%
-echo db        %DB_HOST%:%DB_PORT% user %DB_USER% empty password
+echo db        %DB_HOST%:%DB_PORT% user %DB_USER%, password 123456 unless DB_PASS says otherwise
 exit /b 0
 
 :mysql_system
@@ -593,8 +595,7 @@ exit /b 1
 if not defined DB_PORT set "DB_PORT=3307"
 set "INI_FILE=%TOOLS%\my-%DB_PORT%.ini"
 set "CLIENT_ARGS=--protocol=tcp -h %DB_HOST% -P %DB_PORT% -u %DB_USER% --connect-timeout=5 --default-character-set=utf8mb4"
-set "CLIENT_PWD="
-if defined DB_PASS set "CLIENT_PWD=-p%DB_PASS%"
+if defined DB_PASS set "MYSQL_PWD=%DB_PASS%"
 set "MYSQL_EXE=%MYSQL_BIN%\mysql.exe"
 set "MYSQLADMIN_EXE=%MYSQL_BIN%\mysqladmin.exe"
 exit /b 0
@@ -605,6 +606,7 @@ set "FWD_TOOLS=%TOOLS:\=/%"
 (
   echo [client]
   echo port=%DB_PORT%
+  echo password=%DB_PASS%
   echo.
   echo [mysqld]
   echo port=%DB_PORT%
@@ -622,9 +624,11 @@ set "FWD_TOOLS=%TOOLS:\=/%"
   echo init-file=%FWD_TOOLS%/init-grants.sql
 ) > "%INI_FILE%"
 (
-  echo CREATE USER IF NOT EXISTS 'root'@'127.0.0.1' IDENTIFIED BY '';
+  echo CREATE USER IF NOT EXISTS 'root'@'127.0.0.1' IDENTIFIED BY '%DB_PASS%';
+  echo ALTER USER 'root'@'127.0.0.1' IDENTIFIED BY '%DB_PASS%';
   echo GRANT ALL PRIVILEGES ON *.* TO 'root'@'127.0.0.1' WITH GRANT OPTION;
-  echo CREATE USER IF NOT EXISTS 'root'@'localhost' IDENTIFIED BY '';
+  echo CREATE USER IF NOT EXISTS 'root'@'localhost' IDENTIFIED BY '%DB_PASS%';
+  echo ALTER USER 'root'@'localhost' IDENTIFIED BY '%DB_PASS%';
   echo GRANT ALL PRIVILEGES ON *.* TO 'root'@'localhost' WITH GRANT OPTION;
   echo FLUSH PRIVILEGES;
 ) > "%GRANTS_FILE%"
@@ -633,7 +637,7 @@ exit /b 0
 :prepare_db
 call :build_client_args
 if not defined MANAGED_DB (
-  "%MYSQL_EXE%" %CLIENT_ARGS% %CLIENT_PWD% -N -B -e "SELECT 1" >nul 2>&1
+  "%MYSQL_EXE%" %CLIENT_ARGS% -N -B -e "SELECT 1" >nul 2>&1
   if errorlevel 1 (
     echo Cannot reach %DB_HOST%:%DB_PORT% as %DB_USER%. Start that server yourself,
     echo or drop a portable MySQL into .tools so this script can manage it.
@@ -716,26 +720,52 @@ if not exist "%ROOT%\db\seed.sql" (
   echo %ROOT%\db\seed.sql is missing, this copy of the repository is incomplete.
   exit /b 1
 )
-echo db        importing db\schema.sql
-"%MYSQL_EXE%" %CLIENT_ARGS% %CLIENT_PWD% < "%ROOT%\db\schema.sql"
+echo db        dropping flyway history, the rebuilt tables carry no migration state
+"%MYSQL_EXE%" %CLIENT_ARGS% -e "DROP TABLE IF EXISTS `%DB_NAME%`.`flyway_schema_history`"
 if errorlevel 1 (
-  echo schema.sql failed
+  echo Could not drop %DB_NAME%.flyway_schema_history, stop the backend and run this again.
+  exit /b 1
+)
+echo db        importing db\schema.sql
+"%MYSQL_EXE%" %CLIENT_ARGS% < "%ROOT%\db\schema.sql"
+if errorlevel 1 (
+  echo schema.sql failed, the database is now incomplete.
+  echo Fix db\schema.sql and run start.bat reset again, every table it creates is dropped first.
   exit /b 1
 )
 echo db        importing db\seed.sql
-"%MYSQL_EXE%" %CLIENT_ARGS% %CLIENT_PWD% < "%ROOT%\db\seed.sql"
+"%MYSQL_EXE%" %CLIENT_ARGS% < "%ROOT%\db\seed.sql"
 if errorlevel 1 (
-  echo seed.sql failed
+  echo seed.sql failed, the database has structure but no usable rows.
   exit /b 1
 )
+echo db        re-applying migrations, seed.sql alone leaves no passwords or coupons
+call :apply_migrations
+if errorlevel 1 exit /b 1
 call :count_tables
 echo db        %TABLE_COUNT% tables built
 call :show_status
 exit /b 0
 
+:apply_migrations
+if not exist "%MIGRATION_DIR%" (
+  echo %MIGRATION_DIR% is missing, this copy of the repository is incomplete.
+  exit /b 1
+)
+for %%F in ("%MIGRATION_DIR%\V*.sql") do (
+  echo db        applying %%~nxF
+  "%MYSQL_EXE%" %CLIENT_ARGS% %DB_NAME% < "%%F"
+  if errorlevel 1 (
+    echo %%~nxF failed, the seed is incomplete without it.
+    echo Flyway applies the same file again on backend start, it is written to be re-runnable.
+    exit /b 1
+  )
+)
+exit /b 0
+
 :count_tables
 set "TABLE_COUNT="
-"%MYSQL_EXE%" %CLIENT_ARGS% %CLIENT_PWD% -N -B -e "SELECT COUNT(*) FROM information_schema.tables WHERE table_schema='%DB_NAME%'" > "%PROBE_FILE%" 2>nul
+"%MYSQL_EXE%" %CLIENT_ARGS% -N -B -e "SELECT COUNT(*) FROM information_schema.tables WHERE table_schema='%DB_NAME%'" > "%PROBE_FILE%" 2>nul
 if errorlevel 1 exit /b 0
 for /f "usebackq delims=" %%I in ("%PROBE_FILE%") do set "TABLE_COUNT=%%I"
 del "%PROBE_FILE%" >nul 2>&1
@@ -743,7 +773,7 @@ exit /b 0
 
 :show_status
 echo tz        %DB_HOST%:%DB_PORT% session time zone, table count and order count
-"%MYSQL_EXE%" %CLIENT_ARGS% %CLIENT_PWD% -N -B -e "SELECT @@session.time_zone, @@transaction_isolation, (SELECT COUNT(*) FROM information_schema.tables WHERE table_schema='%DB_NAME%'), (SELECT COUNT(*) FROM %DB_NAME%.o_order)"
+"%MYSQL_EXE%" %CLIENT_ARGS% -N -B -e "SELECT @@session.time_zone, @@transaction_isolation, (SELECT COUNT(*) FROM information_schema.tables WHERE table_schema='%DB_NAME%'), (SELECT COUNT(*) FROM %DB_NAME%.o_order)"
 exit /b 0
 
 :run_checks
@@ -800,7 +830,7 @@ echo.
 echo   start.bat            fetch whatever is missing, prepare the database and the
 echo                        data, run the backend, start the web dev server, open it
 echo   start.bat db         only bring the database up and make sure it is populated
-echo   start.bat reset      drop every table, re-import schema.sql and seed.sql
+echo   start.bat reset      drop every table, re-import schema.sql, seed.sql and the migrations
 echo   start.bat check      static check, flyway diff and the real MySQL test suite
 echo   start.bat build      prepare the database, then package the jar without running it
 echo   start.bat stop       stop backend, web, H5 and the portable mysqld

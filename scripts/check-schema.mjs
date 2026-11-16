@@ -339,6 +339,31 @@ function auditOrder(tables, report) {
   if (!idem) report.err('o_order', '缺少 client_order_no 唯一约束,下单接口无法幂等');
 }
 
+function auditDropParity(statements, tables, report) {
+  const dropped = [];
+  for (const stmt of statements) {
+    const m = stmt.replace(/\s+/g, ' ').trim().match(/^DROP\s+TABLE\s+IF\s+EXISTS\s+`?([a-zA-Z0-9_]+)`?$/i);
+    if (m) dropped.push(m[1]);
+  }
+  const droppedSet = new Set(dropped);
+  if (!droppedSet.size) {
+    report.err('(全局)', 'schema.sql 没有任何 DROP TABLE IF EXISTS,reset 无法重建');
+    return;
+  }
+  for (const name of tables.keys()) {
+    if (!droppedSet.has(name)) {
+      report.err(name, 'schema.sql 建了这张表但没有对应的 DROP TABLE IF EXISTS:start.bat reset 会在 CREATE 处撞 1050 中断,留下半套表');
+    }
+  }
+  for (const name of droppedSet) {
+    if (!tables.has(name)) report.err(name, 'DROP TABLE IF EXISTS 指向 schema.sql 里不存在的表');
+  }
+  if (dropped.length !== droppedSet.size) {
+    report.err('(全局)', `DROP TABLE 有重复项,共 ${dropped.length} 条、去重后 ${droppedSet.size} 条`);
+  }
+  report.dropCount = droppedSet.size;
+}
+
 function jsonFromExpr(e) {
   if (!e || typeof e !== 'object') return e;
   if (e.type === 'function') {
@@ -671,6 +696,7 @@ function main() {
   const { tables, parsed, skipped, failed } = collectTables(schemaStatements, report);
   auditTables(tables, report);
   auditOrder(tables, report);
+  auditDropParity(schemaStatements, tables, report);
   deriveEnumValues(tables);
 
   const seedRuns = [];
@@ -698,6 +724,9 @@ function main() {
   lines.push(`schema    ${path.resolve(schemaFile)}`);
   lines.push(`语句块    ${schemaStatements.length} → 解析成功 ${parsed},跳过 ${skipped}(SET/USE),失败 ${failed}`);
   lines.push(`规模      ${tables.size} 表 / ${totalCols} 列 / ${totalIdx} 索引(唯一 ${totalUniq}) / ${totalFk} 外键`);
+  if (report.dropCount !== undefined) {
+    lines.push(`重建      DROP TABLE IF EXISTS ${report.dropCount} 条,与建表清单一一对应`);
+  }
   for (const s of seedRuns) {
     lines.push(`seed      ${path.basename(s.file)} → ${s.blocks} 语句块,${s.parsed} 条 INSERT 解析成功,写入 ${s.tables} 张表共 ${s.rows} 行`);
   }
