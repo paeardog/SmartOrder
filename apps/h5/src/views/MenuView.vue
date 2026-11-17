@@ -199,7 +199,7 @@
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import { showConfirmDialog } from "vant";
-import { catalog, type CartItem, type DishSummary, type MenuResponse } from "@smartorder/api-client";
+import { businessOf, catalog, type BusinessState, type CartItem, type DishSummary, type MenuResponse } from "@smartorder/api-client";
 import { matchesFields } from "@smartorder/shared";
 import ArtImage from "../components/ArtImage.vue";
 import CartBar from "../components/CartBar.vue";
@@ -215,7 +215,6 @@ import { cachePeek, isStale, swr } from "../utils/cache";
 import { soldText, yuanText } from "../utils/format";
 import { flyToCart } from "../utils/fly";
 import { reportError, toastText } from "../utils/report";
-import { businessOf, type BusinessState } from "../utils/status";
 
 defineOptions({ name: "MenuView" });
 

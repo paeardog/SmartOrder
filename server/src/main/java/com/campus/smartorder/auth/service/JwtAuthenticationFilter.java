@@ -86,7 +86,7 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
                 request.setAttribute("userId", subjectId);
             }
 
-            ConsoleAccess.enforce(path, subjectType, roleCode);
+            ConsoleAccess.enforce(path, subjectType, roleCode, request.getMethod());
             filterChain.doFilter(request, response);
         } catch (BizException ex) {
             writeError(response, ex.errorCode());

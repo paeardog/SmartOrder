@@ -8,6 +8,7 @@ import com.campus.smartorder.auth.mapper.SmsCodeMapper;
 import com.campus.smartorder.common.api.BizException;
 import com.campus.smartorder.common.api.ErrorCode;
 import com.campus.smartorder.common.api.Ids;
+import com.campus.smartorder.console.ConsoleAccountService;
 import com.campus.smartorder.user.domain.User;
 import com.campus.smartorder.user.mapper.UserMapper;
 import org.springframework.stereotype.Service;
@@ -31,15 +32,17 @@ public class AuthService {
     private final AuthTokenMapper authTokenMapper;
     private final JwtTokenProvider jwtTokenProvider;
     private final PasswordHasher passwordHasher;
+    private final ConsoleAccountService consoleAccountService;
 
     public AuthService(UserMapper userMapper, SmsCodeMapper smsCodeMapper,
                        AuthTokenMapper authTokenMapper, JwtTokenProvider jwtTokenProvider,
-                       PasswordHasher passwordHasher) {
+                       PasswordHasher passwordHasher, ConsoleAccountService consoleAccountService) {
         this.userMapper = userMapper;
         this.smsCodeMapper = smsCodeMapper;
         this.authTokenMapper = authTokenMapper;
         this.jwtTokenProvider = jwtTokenProvider;
         this.passwordHasher = passwordHasher;
+        this.consoleAccountService = consoleAccountService;
     }
 
     public void sendSmsCode(String phone) {
@@ -199,6 +202,10 @@ public class AuthService {
 
     public Map<String, Object> refreshToken(String refreshToken) {
         try {
+            if (JwtTokenProvider.SUBJECT_ACCOUNT.equals(
+                    jwtTokenProvider.getSubjectType(jwtTokenProvider.parseToken(refreshToken)))) {
+                return consoleAccountService.refresh(refreshToken);
+            }
             Long userId = jwtTokenProvider.getUserIdFromToken(refreshToken);
             if (!"refresh".equals(jwtTokenProvider.getTokenType(refreshToken))) {
                 throw new BizException(ErrorCode.TOKEN_INVALID);

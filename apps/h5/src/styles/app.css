@@ -86,6 +86,7 @@
   --van-skeleton-paragraph-background: var(--muted-soft);
   --van-empty-text-color: var(--content-meta);
   --van-sticky-z-index: 20;
+  --van-tabbar-z-index: 100;
 }
 
 :root.dark {

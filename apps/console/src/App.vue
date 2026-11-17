@@ -2,6 +2,7 @@
 import { computed, onBeforeUnmount, ref, watch } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import { applyTheme, CAMPUS_ZONE, serverNow } from "@smartorder/shared";
+import { businessOf } from "@smartorder/api-client";
 import ToastHost from "./components/ToastHost.vue";
 import { board, clearArrivals, startBoard, stopBoard, waitingCount } from "./stores/board";
 import { consoleStore, isMerchant, logout, signedIn } from "./stores/session";
@@ -99,6 +100,7 @@ const role = computed(() => consoleStore.account?.roleCode ?? "");
 const bare = computed(() => route.name === "login");
 const baseTitle = computed(() => (typeof route.meta["title"] === "string" ? route.meta["title"] : "商家端"));
 const boardActive = computed(() => signedIn() && isMerchant());
+const business = computed(() => (shop.profile === null ? null : businessOf(shop.profile)));
 
 const groups = computed(() =>
   NAV_GROUPS.map((group) => ({
@@ -231,8 +233,8 @@ async function switchOpen(): Promise<void> {
     <main class="so-main">
       <header class="so-topbar">
         <div class="so-topbar__title">{{ baseTitle }}</div>
-        <span v-if="boardActive && shop.profile" class="so-tag" :class="shop.profile.open ? 'so-tag--ok' : 'so-tag--muted'">
-          {{ shop.profile.open ? "营业中" : "已歇业" }}
+        <span v-if="boardActive && business" class="so-tag" :class="'so-tag--' + business.tone">
+          {{ business.label }}
         </span>
         <button
           v-if="boardActive && isMerchant() && shop.profile"

@@ -33,11 +33,10 @@
 
 <script setup lang="ts">
 import { computed } from "vue";
-import type { MerchantSummary } from "@smartorder/api-client";
+import { businessOf, type MerchantSummary } from "@smartorder/api-client";
 import ArtImage from "./ArtImage.vue";
 import StatusTag from "./StatusTag.vue";
 import { hhmm, soldText, yuanText } from "../utils/format";
-import { businessOf } from "../utils/status";
 
 const props = defineProps<{
   merchant: MerchantSummary;

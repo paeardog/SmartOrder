@@ -1,7 +1,8 @@
 <script setup lang="ts">
 import { computed, onMounted, reactive, ref, watch } from "vue";
 import type { MerchantProfileUpdateRequest } from "@smartorder/api-client";
-import { CATEGORY_LABELS, MERCHANT_STATUS_LABELS, centsToYuanInput, formatYuan, yuanInputToCents } from "@smartorder/shared";
+import { businessOf } from "@smartorder/api-client";
+import { CATEGORY_LABELS, centsToYuanInput, formatYuan, yuanInputToCents } from "@smartorder/shared";
 import { consoleStore } from "../stores/session";
 import { loadProfile, saveProfile, shop, toggleOpen } from "../stores/shop";
 import { toastError, toastOk } from "../stores/toasts";
@@ -38,6 +39,7 @@ const filling = ref(false);
 const saving = ref(false);
 
 const profile = computed(() => shop.profile);
+const business = computed(() => (profile.value === null ? null : businessOf(profile.value)));
 const categoryOptions = computed(() => Object.entries(CATEGORY_LABELS));
 
 function fill(source: Record<string, unknown>): void {
@@ -198,8 +200,8 @@ onMounted(() => {
           <div class="so-card">
             <div class="so-card__header">
               <span class="so-card__title">营业状态</span>
-              <span class="so-tag" :class="profile.open ? 'so-tag--ok' : 'so-tag--muted'">
-                {{ MERCHANT_STATUS_LABELS[profile.status] }}
+              <span v-if="business" class="so-tag" :class="'so-tag--' + business.tone">
+                {{ business.label }}
               </span>
             </div>
             <div class="so-kv"><span class="so-kv__key">校区</span><span class="so-kv__val">{{ profile.campusArea }}</span></div>
@@ -222,7 +224,7 @@ onMounted(() => {
           <div class="so-card">
             <div class="so-card__header"><span class="so-card__title">经营表现</span></div>
             <div class="so-kv"><span class="so-kv__key">月售</span><span class="so-kv__val">{{ profile.monthSold }} 单</span></div>
-            <div class="so-kv"><span class="so-kv__key">评分</span><span class="so-kv__val">{{ profile.ratingScore.toFixed(1) }}（{{ profile.ratingCount }} 条）</span></div>
+            <div class="so-kv"><span class="so-kv__key">评分</span><span class="so-kv__val">{{ (profile.ratingScore / 100).toFixed(1) }}（{{ profile.ratingCount }} 条）</span></div>
             <div class="so-kv"><span class="so-kv__key">起送 / 打包</span><span class="so-kv__val">{{ formatYuan(profile.minOrderAmount) }} / {{ formatYuan(profile.packFee) }}</span></div>
           </div>
 

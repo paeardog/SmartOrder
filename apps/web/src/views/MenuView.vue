@@ -4,6 +4,7 @@ import { useRoute, useRouter } from "vue-router";
 import {
   CLOSING_SOON_MINUTES,
   availableOptions,
+  businessOf,
   cachePeek,
   cacheWrite,
   catalog,
@@ -27,7 +28,7 @@ import {
   type MenuOption,
   type SkuSelection,
 } from "@smartorder/api-client";
-import { formatMoneyShort, formatYuan, MERCHANT_STATUS_LABELS, MERCHANT_STATUS_TONES } from "@smartorder/shared";
+import { formatMoneyShort, formatYuan } from "@smartorder/shared";
 import AppIcon from "../components/AppIcon.vue";
 import ConfirmDialog from "../components/ConfirmDialog.vue";
 import EmptyState from "../components/EmptyState.vue";
@@ -75,6 +76,7 @@ let timer: number | null = null;
 let highlightTimer: number | null = null;
 
 const merchant = computed(() => menu.value?.merchant ?? null);
+const business = computed(() => (merchant.value === null ? null : businessOf(merchant.value)));
 
 const categoryCounts = computed(() => {
   const rows: { categoryId: string; name: string; count: number; soldOut: boolean }[] = [];
@@ -143,16 +145,20 @@ function statusText(): string {
   if (row === null) {
     return "";
   }
-  if (!row.open) {
-    if (row.closedToday) {
-      return row.closeReason === "" ? "今日休息" : `今日休息：${row.closeReason}`;
-    }
-    return `已打烊，营业时间 ${row.acceptStart} - ${row.acceptEnd}`;
+  const state = businessOf(row);
+  if (state.key === "OPEN") {
+    return `营业中 · 接单至 ${row.acceptEnd}`;
   }
-  if (closingSoon.value) {
+  if (state.key === "CLOSING") {
     return `即将打烊，${row.closeTime} 后暂停接单`;
   }
-  return `营业中 · 接单至 ${row.acceptEnd}`;
+  if (state.key === "WAIT_OPEN") {
+    return `已打烊，营业时间 ${row.acceptStart} - ${row.acceptEnd}`;
+  }
+  if (state.key === "OFFLINE") {
+    return state.hint;
+  }
+  return row.closeReason === "" || row.closeReason === "今日休息" ? "今日休息" : `今日休息：${row.closeReason}`;
 }
 
 async function load(silent = false): Promise<void> {
@@ -435,7 +441,7 @@ onBeforeUnmount(() => {
         <div class="so-grow">
           <div class="so-row so-row--wrap" style="gap: 0.75rem">
             <h1 class="so-merchant-hero__name">{{ merchant.name }}</h1>
-            <StatusTag :label="MERCHANT_STATUS_LABELS[merchant.status]" :tone="MERCHANT_STATUS_TONES[merchant.status]" dot />
+            <StatusTag v-if="business" :label="business.label" :tone="business.tone" dot />
             <span v-if="dining.matchesScan(merchant.merchantId)" class="so-tag so-tag--info">
               <AppIcon name="pin" :size="12" />{{ dining.tableLine() }}
             </span>

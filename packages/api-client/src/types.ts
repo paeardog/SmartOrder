@@ -598,6 +598,11 @@ export interface MerchantAuditRow {
   status: MerchantStatus;
   monthSold: number;
   ratingScore: number;
+  open: boolean;
+  closeReason: string;
+  openTime: string;
+  closeTime: string;
+  avgPrepareMinutes: number;
 }
 
 export type CouponKind = "CASH" | "DISCOUNT" | "SHIPPING";

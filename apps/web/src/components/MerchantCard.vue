@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed } from "vue";
 import { useRouter } from "vue-router";
-import { minutesToText, soldText, type MerchantSummary } from "@smartorder/api-client";
+import { businessOf, minutesToText, soldText, type MerchantSummary } from "@smartorder/api-client";
 import { formatMoneyShort } from "@smartorder/shared";
 import AppIcon from "./AppIcon.vue";
 import SoImage from "./SoImage.vue";
@@ -17,8 +17,9 @@ const props = withDefaults(
 const router = useRouter();
 
 const rating = computed(() => (props.merchant.ratingScore / 100).toFixed(1));
-const dotClass = computed(() => (props.merchant.open ? "so-status-dot--open" : "so-status-dot--closed"));
-const stateText = computed(() => (props.merchant.open ? "营业中" : props.merchant.closeReason !== "" ? props.merchant.closeReason : "休息中"));
+const business = computed(() => businessOf(props.merchant));
+const dotClass = computed(() => (business.value.saleable ? "so-status-dot--open" : "so-status-dot--closed"));
+const stateText = computed(() => business.value.label);
 
 function open(): void {
   void router.push({ name: "merchant", params: { id: props.merchant.merchantId } });

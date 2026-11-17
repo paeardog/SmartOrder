@@ -23,11 +23,15 @@ public final class ConsoleAccess {
     private ConsoleAccess() {
     }
 
-    public static void enforce(String path, String subjectType, String roleCode) {
+    public static void enforce(String path, String subjectType, String roleCode, String method) {
         String role = roleCode == null ? "" : roleCode;
         if (path.startsWith(MERCHANT_PREFIX)) {
             if (!JwtTokenProvider.SUBJECT_ACCOUNT.equals(subjectType) || !role.startsWith(MERCHANT_ROLE_PREFIX)) {
                 throw new BizException(ErrorCode.FORBIDDEN);
+            }
+            if (ROLE_MERCHANT_STAFF.equals(role) && !"GET".equalsIgnoreCase(method)
+                    && !path.matches(".*/orders/[^/]+/(accept|start|ready|verify|reject)")) {
+                throw new BizException(ErrorCode.FORBIDDEN, "店员只能处理订单，其他设置请联系老板");
             }
         }
         if (path.startsWith(PLATFORM_PREFIX)) {

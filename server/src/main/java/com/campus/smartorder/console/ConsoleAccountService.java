@@ -10,10 +10,12 @@ import com.campus.smartorder.common.api.Ids;
 import com.campus.smartorder.common.config.SmartOrderProperties;
 import com.campus.smartorder.merchant.domain.Merchant;
 import com.campus.smartorder.merchant.mapper.MerchantMapper;
+import io.jsonwebtoken.Claims;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDateTime;
+import java.util.Map;
 
 @Service
 public class ConsoleAccountService {
@@ -59,6 +61,27 @@ public class ConsoleAccountService {
 
         return new ConsoleDto.ConsoleSession(accessToken, refreshToken,
                 jwtTokenProvider.accountAccessTokenTtlSeconds(), info(account));
+    }
+
+    public Map<String, Object> refresh(String refreshToken) {
+        Claims claims;
+        try {
+            claims = jwtTokenProvider.parseToken(refreshToken);
+        } catch (Exception ex) {
+            throw new BizException(ErrorCode.TOKEN_INVALID);
+        }
+        if (!"refresh".equals(jwtTokenProvider.getTokenType(refreshToken))
+                || !JwtTokenProvider.SUBJECT_ACCOUNT.equals(jwtTokenProvider.getSubjectType(claims))) {
+            throw new BizException(ErrorCode.TOKEN_INVALID);
+        }
+        SysAccount account = require(Long.parseLong(claims.getSubject()));
+        String accessToken = jwtTokenProvider.createAccountAccessToken(
+                account.getId(), account.getRoleCode(), account.getMerchantId());
+        String nextRefreshToken = jwtTokenProvider.createAccountRefreshToken(account.getId());
+        return Map.of(
+                "accessToken", accessToken,
+                "refreshToken", nextRefreshToken,
+                "expiresIn", jwtTokenProvider.accountAccessTokenTtlSeconds());
     }
 
     public SysAccount require(Long accountId) {

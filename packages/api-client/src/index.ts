@@ -4,6 +4,7 @@ export * from "./http";
 export * from "./endpoints";
 export * from "./events";
 export * from "./shop/format";
+export * from "./shop/business";
 export * from "./shop/order";
 export * from "./shop/sku";
 export * from "./shop/coupon";

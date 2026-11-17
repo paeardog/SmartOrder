@@ -94,8 +94,8 @@ export type Tone = "primary" | "ok" | "info" | "warn" | "danger" | "caution" | "
 
 export const MERCHANT_STATUS_LABELS: Readonly<Record<MerchantStatus, string>> = {
   0: "待审核",
-  1: "营业中",
-  2: "已打烊",
+  1: "正常",
+  2: "停用",
   3: "已封禁",
   4: "审核驳回",
 };

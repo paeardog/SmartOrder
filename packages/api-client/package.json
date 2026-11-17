@@ -4,8 +4,7 @@
   "private": true,
   "type": "module",
   "exports": {
-    ".": "./src/index.ts",
-    "./mock": "./src/mock/browser.ts"
+    ".": "./src/index.ts"
   },
   "scripts": {
     "typecheck": "tsc -p tsconfig.json"
@@ -14,7 +13,6 @@
     "@smartorder/shared": "workspace:*"
   },
   "devDependencies": {
-    "msw": "^2.7.5",
     "typescript": "^5.9.3"
   }
 }

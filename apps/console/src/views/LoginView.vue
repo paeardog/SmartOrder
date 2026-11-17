@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, ref } from "vue";
+import { ref } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import { ApiError } from "@smartorder/api-client";
 import { homeRouteOf } from "../router";
@@ -15,8 +15,6 @@ const username = ref("");
 const password = ref("");
 const busy = ref(false);
 const error = ref("");
-
-const mockMode = computed(() => import.meta.env.DEV && import.meta.env.VITE_USE_MOCK !== "off");
 
 function usable(value: unknown): boolean {
   return typeof value === "string" && value.startsWith("/") && !value.startsWith("//");
@@ -47,6 +45,7 @@ async function submit(): Promise<void> {
   }
 }
 
+// TODO(上线前): 移除演示账号入口，密码来自 application-dev.yml 的 dev-account-password
 function useDemo(name: string): void {
   username.value = name;
   password.value = "demo123456";
@@ -76,14 +75,14 @@ function useDemo(name: string): void {
         {{ busy ? "登录中" : "登录" }}
       </button>
 
-      <div v-if="mockMode" class="login__demo">
+      <div class="login__demo">
         <span class="so-field__label">演示账号</span>
         <div class="login__demo-row">
           <button class="so-btn so-btn--ghost so-btn--sm" type="button" @click="useDemo('chuanxiang')">档口老板</button>
           <button class="so-btn so-btn--ghost so-btn--sm" type="button" @click="useDemo('chuanxiang02')">档口店员</button>
           <button class="so-btn so-btn--ghost so-btn--sm" type="button" @click="useDemo('admin')">平台运营</button>
         </div>
-        <p class="so-field__hint">mock 模式不校验密码，真实后端需 sys_account 中的密码凭证。</p>
+        <p class="so-field__hint">演示账号对应 sys_account 种子数据，密码统一为 demo123456。</p>
       </div>
     </form>
   </div>

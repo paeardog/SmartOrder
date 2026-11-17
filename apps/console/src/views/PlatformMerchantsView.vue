@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from "vue";
 import type { MerchantAuditRow, MerchantStatus } from "@smartorder/api-client";
-import { ApiError, platform } from "@smartorder/api-client";
+import { ApiError, businessOf, platform } from "@smartorder/api-client";
 import { CATEGORY_LABELS, MERCHANT_STATUS_LABELS, formatYuan, groupThousands } from "@smartorder/shared";
 import UiModal from "../components/UiModal.vue";
 import { toastError, toastOk } from "../stores/toasts";
@@ -19,8 +19,8 @@ const note = ref("");
 const tabs: ReadonlyArray<{ key: MerchantStatus | "ALL"; label: string }> = [
   { key: "ALL", label: "全部" },
   { key: 0, label: "待审核" },
-  { key: 1, label: "营业中" },
-  { key: 2, label: "已打烊" },
+  { key: 1, label: "正常" },
+  { key: 2, label: "停用" },
   { key: 3, label: "已封禁" },
   { key: 4, label: "已驳回" },
 ];
@@ -82,6 +82,10 @@ function tagClass(value: MerchantStatus): string {
     return "so-tag--ok";
   }
   return value === 0 ? "so-tag--warn" : value === 3 || value === 4 ? "so-tag--danger" : "so-tag--muted";
+}
+
+function biz(row: MerchantAuditRow) {
+  return businessOf(row);
 }
 
 onMounted(() => void load());
@@ -150,8 +154,13 @@ onMounted(() => void load());
               <td class="so-order__opt">{{ row.licenseNo || "未上传" }}</td>
               <td class="so-order__opt">{{ row.pickupPointName }}</td>
               <td class="so-cell--num">{{ row.monthSold }}</td>
-              <td class="so-cell--num">{{ row.ratingScore.toFixed(1) }}</td>
-              <td><span class="so-tag" :class="tagClass(row.status)">{{ MERCHANT_STATUS_LABELS[row.status] }}</span></td>
+              <td class="so-cell--num">{{ (row.ratingScore / 100).toFixed(1) }}</td>
+              <td>
+                <span class="so-tag" :class="tagClass(row.status)">{{ MERCHANT_STATUS_LABELS[row.status] }}</span>
+                <span v-if="row.status === 1" class="so-tag" :class="'so-tag--' + biz(row).tone" style="margin-left: 0.35rem">
+                  {{ biz(row).label }}
+                </span>
+              </td>
               <td class="so-cell--act">
                 <template v-if="row.status === 0">
                   <button class="so-btn so-btn--ok so-btn--sm" type="button" @click="approve(row)">通过</button>

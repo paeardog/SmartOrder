@@ -1,6 +1,5 @@
-import type { MerchantSummary } from "@smartorder/api-client";
 import type { Tone } from "@smartorder/shared";
-import { CLOSING_SOON_MINUTES, hhmm, minutesUntilClose, minutesUntilOpen, minutesToText } from "./format";
+import { CLOSING_SOON_MINUTES, hhmm, minutesToText, minutesUntilClose, minutesUntilOpen } from "./format";
 
 export type BusinessKey = "OPEN" | "CLOSING" | "WAIT_OPEN" | "CLOSED_TODAY" | "OFFLINE";
 
@@ -12,15 +11,33 @@ export interface BusinessState {
   saleable: boolean;
 }
 
-export function businessOf(merchant: MerchantSummary): BusinessState {
+export interface BusinessInput {
+  status: number;
+  open: boolean;
+  closeReason: string;
+  openTime: string;
+  closeTime: string;
+  avgPrepareMinutes: number;
+  closedToday?: boolean;
+}
+
+const OUT_OF_HOURS_REASON = "不在营业时段";
+const NO_HOURS_REASON = "未设置营业时段";
+const WEEKLY_REST_REASON = "今日休息";
+
+export function businessOf(merchant: BusinessInput): BusinessState {
   if (merchant.status !== 1) {
     return { key: "OFFLINE", label: "暂不可点", hint: "该档口已下线", tone: "muted", saleable: false };
   }
-  if (merchant.closedToday) {
+  const paused =
+    merchant.closedToday === true ||
+    (merchant.closeReason !== "" && merchant.closeReason !== OUT_OF_HOURS_REASON && merchant.closeReason !== NO_HOURS_REASON);
+  if (!merchant.open && paused) {
+    const reason = merchant.closeReason === "" || merchant.closeReason === WEEKLY_REST_REASON ? "" : merchant.closeReason;
     return {
       key: "CLOSED_TODAY",
       label: "今日休息",
-      hint: merchant.closeReason === "" ? "商家暂停接单，看看别家吧" : `商家暂停接单：${merchant.closeReason}`,
+      hint: reason === "" ? "商家暂停接单，看看别家吧" : `商家暂停接单：${reason}`,
       tone: "muted",
       saleable: false,
     };
@@ -52,8 +69,4 @@ export function businessOf(merchant: MerchantSummary): BusinessState {
     tone: "ok",
     saleable: true,
   };
-}
-
-export function isOpenLike(merchant: MerchantSummary): boolean {
-  return businessOf(merchant).saleable;
 }

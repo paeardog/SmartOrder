@@ -192,7 +192,7 @@
 <script setup lang="ts">
 import { computed, onActivated, onBeforeUnmount, onMounted, ref, watch } from "vue";
 import { useRoute, useRouter } from "vue-router";
-import { catalog, type MerchantSummary, type OrderStatus } from "@smartorder/api-client";
+import { businessOf, catalog, type MerchantSummary, type OrderStatus } from "@smartorder/api-client";
 import {
   formatCountdown,
   formatMoney,
@@ -213,7 +213,6 @@ import { parseScanTarget, useDiningStore } from "../stores/dining";
 import { useOrderStore } from "../stores/orders";
 import { swr } from "../utils/cache";
 import { lastKeyword } from "../utils/search";
-import { businessOf } from "../utils/status";
 import { toastText } from "../utils/report";
 
 defineOptions({ name: "HomeView" });

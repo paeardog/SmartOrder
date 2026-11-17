@@ -16,9 +16,4 @@ export async function bootApi(): Promise<void> {
     },
     onServerTime: (value) => syncServerClock(value, Date.now()),
   });
-
-  if (import.meta.env.DEV && import.meta.env.VITE_USE_MOCK === "on") {
-    const { startMockWorker } = await import("@smartorder/api-client/mock");
-    await startMockWorker();
-  }
 }

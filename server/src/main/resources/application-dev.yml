@@ -7,6 +7,8 @@ spring:
 smartorder:
   security:
     jwt-secret: ZGV2LW9ubHktc2VjcmV0LWRvLW5vdC1zaGlwLXRoaXMtdmFsdWUtaW50by1naXQ=
+    # TODO(上线前): 演示账号统一密码，上线必须清空并给 sys_account 换真实密码哈希
+    dev-account-password: demo123456
   messaging:
     sms-enabled: false
 

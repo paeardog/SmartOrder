@@ -21,7 +21,6 @@ import {
   countOf,
   reload,
   runAction,
-  streamPollByDesign,
   sync,
   type BoardAction,
   type BoardStatus,
@@ -45,8 +44,7 @@ const showGuide = ref(readJson<boolean>(GUIDE_KEY) !== false);
 
 const refunding = computed(() => countOf("REFUNDING"));
 const total = computed(() => BOARD_STATUSES.reduce((sum, status) => sum + countOf(status), 0));
-const degraded = computed(() => (board.connection === "polling" || board.connection === "reconnecting") && !streamPollByDesign());
-const demoPoll = computed(() => board.connection === "polling" && streamPollByDesign());
+const degraded = computed(() => board.connection === "polling" || board.connection === "reconnecting");
 const stale = computed(() => board.failures > 0 && !degraded.value);
 const reasonText = computed(() => (note.value.trim() === "" ? reason.value : note.value.trim()));
 
@@ -135,9 +133,6 @@ function gotoRefunds(): void {
         {{ board.connection === "polling" ? "实时连接已断开，正在每 3 秒轮询兜底" : "实时连接中断，正在重连" }}
       </span>
       <button class="so-btn so-btn--ghost so-btn--sm" type="button" @click="reload">立即重试</button>
-    </div>
-    <div v-else-if="demoPoll" class="so-banner so-banner--info">
-      <span>演示数据模式：看板每 3 秒轮询同步，不建立实时推送连接</span>
     </div>
     <div v-else-if="stale" class="so-banner so-banner--warn">
       <span>最近一次同步失败，看板可能不是最新</span>

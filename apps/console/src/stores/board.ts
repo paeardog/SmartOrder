@@ -61,12 +61,7 @@ let flashTimer: number | null = null;
 let signature = "";
 let waitingBaseline = 0;
 
-const streamMode = (): "auto" | "poll" =>
-  import.meta.env.DEV && import.meta.env.VITE_USE_MOCK !== "off" ? "poll" : "auto";
-
 export const waitingCount = (): number => countOf("PAID");
-
-export const streamPollByDesign = (): boolean => streamMode() === "poll";
 
 export function countOf(status: OrderStatus): number {
   return board.summary?.counts[status] ?? 0;
@@ -260,7 +255,7 @@ export function startBoard(): void {
         board.connection = status;
       },
     },
-    { path: "/merchant/events/stream", fallbackIntervalMs: 3_000, maxRetry: 2, mode: streamMode(), token: consoleStore.access },
+    { path: "/events/stream", fallbackIntervalMs: 3_000, maxRetry: 2, token: consoleStore.access },
   );
   stream.start(() => void sync());
 }
