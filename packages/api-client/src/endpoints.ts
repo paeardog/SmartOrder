@@ -50,6 +50,9 @@ import type {
   PaymentDto,
   PickupPoint,
   PlatformOverview,
+  PlatformUserRow,
+  PlatformUserSummary,
+  ListPlatformUsersParams,
   PreflightRequest,
   PreflightResult,
   RejectOrderRequest,
@@ -190,10 +193,16 @@ export const merchant = {
 
 export const platform = {
   overview: () => get<PlatformOverview>("/platform/overview"),
+  users: (params: ListPlatformUsersParams) => get<Page<PlatformUserRow>>("/platform/users", { ...params }),
+  userSummary: () => get<PlatformUserSummary>("/platform/users/summary"),
+  updateUserStatus: (userId: string, status: 0 | 1, expectedStatus: 0 | 1, reason: string) =>
+    patch<PlatformUserRow>(`/platform/users/${userId}/status`, { status, expectedStatus, reason }),
+  updateMerchantStatus: (merchantId: string, status: 1 | 2 | 3, expectedStatus: 1 | 2 | 3) =>
+    patch<MerchantAuditRow>(`/platform/merchants/${merchantId}/status`, { status, expectedStatus }),
   merchants: (status?: number) => get<MerchantAuditRow[]>("/platform/merchants", { status }),
   approve: (merchantId: string) => post<MerchantAuditRow>(`/platform/merchants/${merchantId}/approve`),
   reject: (merchantId: string, reason: string) => post<MerchantAuditRow>(`/platform/merchants/${merchantId}/reject`, { reason }),
   configs: () => get<ConfigItem[]>("/platform/configs"),
   saveConfig: (configKey: string, configValue: string) =>
-    patch<ConfigItem>(`/platform/configs/${configKey}`, { configValue }),
+    patch<ConfigItem>(`/platform/configs/${encodeURIComponent(configKey)}`, { configValue }),
 };

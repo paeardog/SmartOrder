@@ -9,10 +9,10 @@ import com.campus.smartorder.merchant.api.MerchantConsoleDto;
 import com.campus.smartorder.merchant.domain.Dish;
 import com.campus.smartorder.merchant.domain.Merchant;
 import com.campus.smartorder.merchant.mapper.DishMapper;
-import com.campus.smartorder.merchant.mapper.MerchantMapper;
 import com.campus.smartorder.merchant.service.MerchantProfileService;
 import com.campus.smartorder.merchant.service.MerchantStatsService;
 import com.campus.smartorder.merchant.service.OpenStateService;
+import com.campus.smartorder.merchant.service.PlatformMerchantService;
 import com.campus.smartorder.order.domain.Order;
 import com.campus.smartorder.order.domain.OrderStatus;
 import com.campus.smartorder.order.mapper.OrderMapper;
@@ -20,24 +20,34 @@ import com.campus.smartorder.system.domain.SysConfig;
 import com.campus.smartorder.system.mapper.SysConfigMapper;
 import com.campus.smartorder.user.domain.PickupPoint;
 import com.campus.smartorder.user.mapper.PickupPointMapper;
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.DeserializationFeature;
+import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Set;
 import java.util.stream.Collectors;
 
 @Service
 public class PlatformService {
 
     private static final String CAMPUS_AREAS_KEY = "OPEN_CAMPUS_AREAS";
+    private static final int MAX_CONFIG_VALUE_LENGTH = 1000;
+    private static final Set<String> POSITIVE_INTEGER_KEYS = Set.of(
+            "ORDER_PAY_TIMEOUT_SECONDS", "ORDER_AUTO_COMPLETE_MINUTES",
+            "MERCHANT_MAX_ACTIVE_ORDERS", "CART_EXPIRE_HOURS");
 
-    private final MerchantMapper merchantMapper;
+    private final PlatformMerchantService platformMerchantService;
     private final DishMapper dishMapper;
     private final OrderMapper orderMapper;
     private final PickupPointMapper pickupPointMapper;
@@ -48,12 +58,12 @@ public class PlatformService {
     private final SmartOrderProperties properties;
     private final ObjectMapper objectMapper;
 
-    public PlatformService(MerchantMapper merchantMapper, DishMapper dishMapper, OrderMapper orderMapper,
+    public PlatformService(PlatformMerchantService platformMerchantService, DishMapper dishMapper, OrderMapper orderMapper,
                            PickupPointMapper pickupPointMapper, SysConfigMapper configMapper,
                            OpenStateService openStateService, MerchantStatsService statsService,
                            MerchantProfileService profileService, SmartOrderProperties properties,
                            ObjectMapper objectMapper) {
-        this.merchantMapper = merchantMapper;
+        this.platformMerchantService = platformMerchantService;
         this.dishMapper = dishMapper;
         this.orderMapper = orderMapper;
         this.pickupPointMapper = pickupPointMapper;
@@ -67,7 +77,7 @@ public class PlatformService {
 
     public PlatformDto.Overview overview() {
         LocalDateTime serverTime = LocalDateTime.now(properties.zone());
-        List<Merchant> merchants = liveMerchants();
+        List<Merchant> merchants = platformMerchantService.merchants(null);
         Map<Long, OpenStateService.State> states =
                 openStateService.statesOf(merchants.stream().map(Merchant::getId).toList(), serverTime);
 
@@ -99,10 +109,10 @@ public class PlatformService {
     }
 
     public List<PlatformDto.AuditRow> merchants(Integer status) {
-        List<Merchant> merchants = merchantMapper.selectList(new LambdaQueryWrapper<Merchant>()
-                .isNull(Merchant::getDeletedAt)
-                .eq(status != null, Merchant::getStatus, status)
-                .orderByAsc(Merchant::getId));
+        return auditRows(platformMerchantService.merchants(status));
+    }
+
+    private List<PlatformDto.AuditRow> auditRows(List<Merchant> merchants) {
         LocalDateTime now = LocalDateTime.now(properties.zone());
         Map<Long, OpenStateService.State> states =
                 openStateService.statesOf(merchants.stream().map(Merchant::getId).toList(), now);
@@ -110,7 +120,7 @@ public class PlatformService {
 
         List<PlatformDto.AuditRow> rows = new ArrayList<>();
         for (Merchant merchant : merchants) {
-            PickupPoint point = points.get(merchant.getPickupPointId());
+            PickupPoint point = merchant.getPickupPointId() == null ? null : points.get(merchant.getPickupPointId());
             OpenStateService.State state = states.getOrDefault(merchant.getId(), closedState());
             boolean open = Integer.valueOf(1).equals(merchant.getStatus()) && state.open();
             rows.add(new PlatformDto.AuditRow(
@@ -124,6 +134,7 @@ public class PlatformService {
                     point == null ? "" : Ids.blank(point.getName()),
                     point == null ? "" : Ids.blank(point.getCampusArea()),
                     merchant.getStatus(),
+                    Ids.blank(merchant.getRejectReason()),
                     merchant.getMonthSoldBase() == null ? 0 : merchant.getMonthSoldBase(),
                     merchant.getRatingScore() == null ? 0 : merchant.getRatingScore(),
                     open,
@@ -135,36 +146,16 @@ public class PlatformService {
         return rows;
     }
 
-    @Transactional
     public PlatformDto.AuditRow approve(Long merchantId) {
-        Merchant merchant = requireMerchant(merchantId);
-        if (!Integer.valueOf(0).equals(merchant.getStatus()) && !Integer.valueOf(4).equals(merchant.getStatus())) {
-            throw new BizException(ErrorCode.INVALID_PARAM, "只有待审核或已驳回的档口才能通过");
-        }
-        Merchant patch = new Merchant();
-        patch.setId(merchantId);
-        patch.setStatus(1);
-        patch.setRejectReason("");
-        merchantMapper.updateById(patch);
-        return rowOf(merchantId);
+        return rowOf(platformMerchantService.approve(merchantId));
     }
 
-    @Transactional
     public PlatformDto.AuditRow reject(Long merchantId, String reason) {
-        String text = reason == null ? "" : reason.trim();
-        if (text.isEmpty()) {
-            throw new BizException(ErrorCode.INVALID_PARAM, "驳回必须填写原因");
-        }
-        Merchant merchant = requireMerchant(merchantId);
-        if (!Integer.valueOf(0).equals(merchant.getStatus())) {
-            throw new BizException(ErrorCode.INVALID_PARAM, "只有待审核的档口才能驳回");
-        }
-        Merchant patch = new Merchant();
-        patch.setId(merchantId);
-        patch.setStatus(4);
-        patch.setRejectReason(text);
-        merchantMapper.updateById(patch);
-        return rowOf(merchantId);
+        return rowOf(platformMerchantService.reject(merchantId, reason));
+    }
+
+    public PlatformDto.AuditRow changeStatus(Long merchantId, Integer status, Integer expectedStatus) {
+        return rowOf(platformMerchantService.changeStatus(merchantId, status, expectedStatus));
     }
 
     public List<PlatformDto.ConfigItem> configs() {
@@ -178,8 +169,7 @@ public class PlatformService {
         if (config == null) {
             throw new BizException(ErrorCode.CONFIG_NOT_FOUND);
         }
-        String value = configValue == null ? "" : configValue.trim();
-        validateValue(config, value);
+        String value = validateValue(config, configValue == null ? "" : configValue.trim());
 
         SysConfig patch = new SysConfig();
         patch.setId(config.getId());
@@ -190,27 +180,69 @@ public class PlatformService {
         return configItem(config);
     }
 
-    private void validateValue(SysConfig config, String value) {
-        String type = config.getValueType() == null ? "STRING" : config.getValueType().toUpperCase();
+    private String validateValue(SysConfig config, String value) {
+        if (value.codePointCount(0, value.length()) > MAX_CONFIG_VALUE_LENGTH) {
+            throw new BizException(ErrorCode.INVALID_PARAM, config.getName() + " 不能超过 1000 字符");
+        }
+        String type = config.getValueType() == null ? "STRING" : config.getValueType().toUpperCase(Locale.ROOT);
         switch (type) {
-            case "NUMBER", "INT", "INTEGER" -> {
-                if (!value.matches("-?\\d+(\\.\\d+)?")) {
-                    throw new BizException(ErrorCode.INVALID_PARAM, config.getName() + " 要填数字");
+            case "INT", "INTEGER" -> integerValue(config, value);
+            case "NUMBER" -> {
+                try {
+                    new BigDecimal(value);
+                } catch (NumberFormatException ex) {
+                    throw new BizException(ErrorCode.INVALID_PARAM, config.getName() + " 要填合法十进制数字");
                 }
             }
             case "BOOL", "BOOLEAN" -> {
-                if (!List.of("true", "false", "0", "1").contains(value.toLowerCase())) {
-                    throw new BizException(ErrorCode.INVALID_PARAM, config.getName() + " 只能填 true 或 false");
+                value = value.toLowerCase(Locale.ROOT);
+                if (!List.of("true", "false", "0", "1").contains(value)) {
+                    throw new BizException(ErrorCode.INVALID_PARAM, config.getName() + " 只能填 true、false、0 或 1");
                 }
             }
             case "JSON" -> {
                 try {
-                    objectMapper.readTree(value);
-                } catch (Exception ex) {
+                    JsonNode node = objectMapper.reader()
+                            .with(DeserializationFeature.FAIL_ON_TRAILING_TOKENS).readTree(value);
+                    if (node == null || node.isMissingNode()) {
+                        throw new BizException(ErrorCode.INVALID_PARAM, config.getName() + " 不能为空 JSON");
+                    }
+                } catch (JsonProcessingException ex) {
                     throw new BizException(ErrorCode.INVALID_PARAM, config.getName() + " 不是合法 JSON");
                 }
             }
             default -> {
+            }
+        }
+        validateKnownKey(config, value);
+        return value;
+    }
+
+    private int integerValue(SysConfig config, String value) {
+        try {
+            if (!value.matches("[+-]?[0-9]+")) {
+                throw new NumberFormatException();
+            }
+            return Integer.parseInt(value);
+        } catch (NumberFormatException ex) {
+            throw new BizException(ErrorCode.INVALID_PARAM, config.getName() + " 要填 32 位整数");
+        }
+    }
+
+    private void validateKnownKey(SysConfig config, String value) {
+        String key = config.getConfigKey();
+        if (POSITIVE_INTEGER_KEYS.contains(key)) {
+            if (integerValue(config, value) <= 0) {
+                throw new BizException(ErrorCode.INVALID_PARAM, config.getName() + " 必须为正整数");
+            }
+        } else if ("USER_CANCEL_WINDOW_SECONDS".equals(key)) {
+            if (integerValue(config, value) < 0) {
+                throw new BizException(ErrorCode.INVALID_PARAM, config.getName() + " 不能小于 0");
+            }
+        } else if ("MIN_VERIFY_STATUS_TO_ORDER".equals(key)) {
+            int status = integerValue(config, value);
+            if (status < 0 || status > 2) {
+                throw new BizException(ErrorCode.INVALID_PARAM, config.getName() + " 只能在 0 到 2 之间");
             }
         }
     }
@@ -225,23 +257,8 @@ public class PlatformService {
                 config.isPublicFlag());
     }
 
-    private PlatformDto.AuditRow rowOf(Long merchantId) {
-        return merchants(null).stream()
-                .filter(row -> row.merchantId().equals(Ids.of(merchantId)))
-                .findFirst()
-                .orElseThrow(() -> new BizException(ErrorCode.MERCHANT_NOT_FOUND));
-    }
-
-    private Merchant requireMerchant(Long merchantId) {
-        Merchant merchant = merchantMapper.selectById(merchantId);
-        if (merchant == null || merchant.getDeletedAt() != null) {
-            throw new BizException(ErrorCode.MERCHANT_NOT_FOUND);
-        }
-        return merchant;
-    }
-
-    private List<Merchant> liveMerchants() {
-        return merchantMapper.selectList(new LambdaQueryWrapper<Merchant>().isNull(Merchant::getDeletedAt));
+    private PlatformDto.AuditRow rowOf(Merchant merchant) {
+        return auditRows(List.of(merchant)).get(0);
     }
 
     private Map<Long, PickupPoint> pointsOf(List<Merchant> merchants) {

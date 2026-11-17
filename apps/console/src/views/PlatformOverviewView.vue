@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from "vue";
 import { useRouter } from "vue-router";
-import type { PlatformOverview } from "@smartorder/api-client";
+import type { PlatformOverview, PlatformUserSummary } from "@smartorder/api-client";
 import { ApiError, platform } from "@smartorder/api-client";
 import { formatMonthDay, formatYuan, groupThousands, percentText } from "@smartorder/shared";
 import MetricCard from "../components/MetricCard.vue";
@@ -9,6 +9,7 @@ import SparkBars from "../components/SparkBars.vue";
 
 const router = useRouter();
 const data = ref<PlatformOverview | null>(null);
+const users = ref<PlatformUserSummary | null>(null);
 const loading = ref(false);
 const error = ref("");
 
@@ -27,7 +28,9 @@ async function load(): Promise<void> {
   loading.value = true;
   error.value = "";
   try {
-    data.value = await platform.overview();
+    const [overview, summary] = await Promise.all([platform.overview(), platform.userSummary()]);
+    data.value = overview;
+    users.value = summary;
   } catch (caught) {
     error.value = caught instanceof ApiError ? caught.message : "平台数据读取失败";
   } finally {
@@ -55,6 +58,8 @@ onMounted(() => void load());
       <div class="so-toolbar">
         <span class="so-tag so-tag--muted">数据时间 {{ data.serverTime.slice(0, 19).replace("T", " ") }}</span>
         <span class="so-topbar__spacer" />
+        <router-link class="so-btn so-btn--secondary so-btn--sm" to="/platform/users">用户管理</router-link>
+        <router-link class="so-btn so-btn--secondary so-btn--sm" to="/platform/merchants">档口管理</router-link>
         <button class="so-btn so-btn--ghost so-btn--sm" type="button" @click="load">刷新</button>
       </div>
 
@@ -74,7 +79,7 @@ onMounted(() => void load());
         <MetricCard label="档口总数" :value="groupThousands(data.merchantTotal)" :foot="`营业中 ${data.merchantOpen}`" />
         <MetricCard label="待审核档口" :value="groupThousands(data.merchantPending)" />
         <MetricCard label="菜品总数" :value="groupThousands(data.dishTotal)" :foot="`${data.campusAreas.length} 个校区`" />
-        <MetricCard label="覆盖校区" :value="String(data.campusAreas.length)" :foot="data.campusAreas.join(' / ')" />
+        <MetricCard label="注册用户" :value="groupThousands(users?.total ?? 0)" :foot="`正常 ${users?.normal ?? 0} · 封禁 ${users?.banned ?? 0}`" />
       </div>
 
       <div class="so-grid so-grid--2">

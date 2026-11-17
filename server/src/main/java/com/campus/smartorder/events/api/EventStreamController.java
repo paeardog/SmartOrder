@@ -1,6 +1,7 @@
 package com.campus.smartorder.events.api;
 
 import com.campus.smartorder.auth.service.JwtTokenProvider;
+import com.campus.smartorder.common.api.BizException;
 import com.campus.smartorder.events.EventStreamService;
 import io.jsonwebtoken.Claims;
 import jakarta.servlet.http.HttpServletRequest;
@@ -50,7 +51,11 @@ public class EventStreamController {
         if (JwtTokenProvider.SUBJECT_ACCOUNT.equals(jwtTokenProvider.getSubjectType(claims))) {
             return eventStreamService.subscribeMerchant(longValue(claims.get("merchantId")));
         }
-        return eventStreamService.subscribeUser(Long.parseLong(claims.getSubject()));
+        try {
+            return eventStreamService.subscribeUser(Long.parseLong(claims.getSubject()));
+        } catch (BizException ex) {
+            return rejected(ex.getMessage());
+        }
     }
 
     private SseEmitter rejected(String reason) {

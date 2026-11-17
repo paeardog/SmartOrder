@@ -13,6 +13,7 @@
     "gen:flyway": "node scripts/gen-flyway.mjs",
     "check:flyway": "node scripts/gen-flyway.mjs --check",
     "test:db": "node scripts/run-db-tests.mjs",
+    "test:platform": "node --test scripts/platform-console.test.mjs",
     "dev:h5": "pnpm --filter @smartorder/h5 dev",
     "dev:web": "pnpm --filter @smartorder/web dev",
     "dev:console": "pnpm --filter @smartorder/console dev",

@@ -244,6 +244,9 @@ public class AuthService {
     }
 
     private Map<String, Object> session(User user) {
+        if (!user.usable()) {
+            throw new BizException(ErrorCode.ACCOUNT_DISABLED);
+        }
         user.setLastLoginAt(LocalDateTime.now());
         user.setUpdatedAt(LocalDateTime.now());
         userMapper.updateById(user);

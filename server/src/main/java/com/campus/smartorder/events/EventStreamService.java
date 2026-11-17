@@ -1,7 +1,9 @@
 package com.campus.smartorder.events;
 
+import com.campus.smartorder.common.api.BizException;
 import com.campus.smartorder.common.config.SmartOrderProperties;
 import com.campus.smartorder.events.mapper.OrderEventMapper;
+import com.campus.smartorder.user.service.PlatformUserService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.scheduling.annotation.Scheduled;
@@ -33,6 +35,7 @@ public class EventStreamService {
 
     private final OrderEventMapper orderEventMapper;
     private final SmartOrderProperties properties;
+    private final PlatformUserService platformUserService;
 
     private final Map<Long, CopyOnWriteArrayList<SseEmitter>> merchantChannels = new ConcurrentHashMap<>();
     private final Map<Long, CopyOnWriteArrayList<SseEmitter>> userChannels = new ConcurrentHashMap<>();
@@ -42,9 +45,11 @@ public class EventStreamService {
     private volatile boolean primed;
     private volatile LocalDateTime watermark = LocalDateTime.now();
 
-    public EventStreamService(OrderEventMapper orderEventMapper, SmartOrderProperties properties) {
+    public EventStreamService(OrderEventMapper orderEventMapper, SmartOrderProperties properties,
+                              PlatformUserService platformUserService) {
         this.orderEventMapper = orderEventMapper;
         this.properties = properties;
+        this.platformUserService = platformUserService;
     }
 
     public SseEmitter subscribeMerchant(Long merchantId) {
@@ -55,6 +60,7 @@ public class EventStreamService {
     }
 
     public SseEmitter subscribeUser(Long userId) {
+        platformUserService.requireUsable(userId);
         CopyOnWriteArrayList<SseEmitter> channel =
                 userChannels.computeIfAbsent(userId, key -> new CopyOnWriteArrayList<>());
         return register(channel, userChannels, userId);
@@ -77,7 +83,7 @@ public class EventStreamService {
     }
 
     public void publishUserOrder(Long userId, String orderNo, String status, Long merchantId) {
-        if (userId == null) {
+        if (userId == null || !userChannels.containsKey(userId) || !userCanReceive(userId)) {
             return;
         }
         Map<String, Object> data = new LinkedHashMap<>();
@@ -136,9 +142,26 @@ public class EventStreamService {
         data.put("serverTime", text(now()));
         List<SseEmitter> all = new ArrayList<>(anonymousChannels);
         merchantChannels.values().forEach(all::addAll);
-        userChannels.values().forEach(all::addAll);
+        userChannels.forEach((userId, channel) -> {
+            if (userCanReceive(userId)) {
+                all.addAll(channel);
+            }
+        });
         for (SseEmitter emitter : all) {
             send(emitter, EVENT_PING, data);
+        }
+    }
+
+    private boolean userCanReceive(Long userId) {
+        try {
+            platformUserService.requireUsable(userId);
+            return true;
+        } catch (BizException ex) {
+            List<SseEmitter> channel = userChannels.remove(userId);
+            if (channel != null) {
+                channel.forEach(SseEmitter::complete);
+            }
+            return false;
         }
     }
 
@@ -159,7 +182,7 @@ public class EventStreamService {
         channel.add(emitter);
         Runnable detach = () -> {
             channel.remove(emitter);
-            if (registry != null && key != null) {
+            if (registry != null && key != null && channel.isEmpty()) {
                 registry.remove(key, channel);
             }
         };

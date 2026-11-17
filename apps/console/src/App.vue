@@ -75,9 +75,15 @@ const NAV_GROUPS: ReadonlyArray<{ title: string; items: NavItem[] }> = [
       },
       {
         path: "/platform/merchants",
-        title: "档口审核",
+        title: "档口管理",
         roles: PLATFORM,
         icon: "M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z",
+      },
+      {
+        path: "/platform/users",
+        title: "用户管理",
+        roles: PLATFORM,
+        icon: "M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2m22 0v-2a4 4 0 00-3-3.87M16 3.13a4 4 0 010 7.75M13 7a4 4 0 11-8 0 4 4 0 018 0z",
       },
       {
         path: "/platform/configs",
@@ -199,7 +205,7 @@ async function switchOpen(): Promise<void> {
     <aside class="so-sidebar">
       <div class="so-sidebar__header">
         <div class="so-sidebar__logo">校园点单 · 控制台</div>
-        <div class="so-sidebar__sub">{{ shop.profile?.name || consoleStore.account?.merchantName || "未绑定档口" }}</div>
+        <div class="so-sidebar__sub">{{ role === 'PLATFORM_ADMIN' ? '全平台运营管理' : shop.profile?.name || consoleStore.account?.merchantName || '未绑定档口' }}</div>
       </div>
       <nav class="so-sidebar__nav">
         <template v-for="group in groups" :key="group.title">

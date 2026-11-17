@@ -69,7 +69,13 @@ const routes: RouteRecordRaw[] = [
     path: "/platform/merchants",
     name: "platform-merchants",
     component: () => import("./views/PlatformMerchantsView.vue"),
-    meta: { title: "档口审核", roles: PLATFORM },
+    meta: { title: "档口管理", roles: PLATFORM },
+  },
+  {
+    path: "/platform/users",
+    name: "platform-users",
+    component: () => import("./views/PlatformUsersView.vue"),
+    meta: { title: "用户管理", roles: PLATFORM },
   },
   {
     path: "/platform/configs",

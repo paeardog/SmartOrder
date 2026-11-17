@@ -45,6 +45,12 @@ public class PlatformController {
         return ApiResponse.ok(platformService.reject(Ids.parse(merchantId), body.reason()));
     }
 
+    @PatchMapping("/merchants/{merchantId}/status")
+    public ApiResponse<PlatformDto.AuditRow> changeStatus(@PathVariable String merchantId,
+                                                         @RequestBody PlatformDto.MerchantStatusRequest body) {
+        return ApiResponse.ok(platformService.changeStatus(Ids.parse(merchantId), body.status(), body.expectedStatus()));
+    }
+
     @GetMapping("/configs")
     public ApiResponse<List<PlatformDto.ConfigItem>> configs() {
         return ApiResponse.ok(platformService.configs());

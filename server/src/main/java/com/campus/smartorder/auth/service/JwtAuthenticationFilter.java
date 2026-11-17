@@ -4,6 +4,7 @@ import com.campus.smartorder.common.api.ApiResponse;
 import com.campus.smartorder.common.api.BizException;
 import com.campus.smartorder.common.api.ErrorCode;
 import com.campus.smartorder.console.ConsoleAccess;
+import com.campus.smartorder.user.service.PlatformUserService;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import io.jsonwebtoken.Claims;
 import jakarta.servlet.FilterChain;
@@ -21,6 +22,7 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
 
     private final JwtTokenProvider jwtTokenProvider;
     private final ObjectMapper objectMapper;
+    private final PlatformUserService platformUserService;
 
     private static final List<String> WHITE_LIST = List.of(
             "/api/v1/auth/password/login",
@@ -38,9 +40,11 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
             "/api/v1/events/stream"
     );
 
-    public JwtAuthenticationFilter(JwtTokenProvider jwtTokenProvider, ObjectMapper objectMapper) {
+    public JwtAuthenticationFilter(JwtTokenProvider jwtTokenProvider, ObjectMapper objectMapper,
+                                   PlatformUserService platformUserService) {
         this.jwtTokenProvider = jwtTokenProvider;
         this.objectMapper = objectMapper;
+        this.platformUserService = platformUserService;
     }
 
     @Override
@@ -82,6 +86,7 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
                     request.setAttribute(ConsoleAccess.MERCHANT_ID, merchantId);
                 }
             } else {
+                platformUserService.requireUsable(subjectId);
                 request.setAttribute(ConsoleAccess.SUBJECT_TYPE, subjectType);
                 request.setAttribute("userId", subjectId);
             }

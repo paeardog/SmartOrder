@@ -585,6 +585,38 @@ export interface ConfigItem {
   isPublic: boolean;
 }
 
+export interface PlatformUserRow {
+  userId: Id;
+  nickname: string;
+  realName: string;
+  phone: string;
+  studentNo: string;
+  college: string;
+  campusArea: string;
+  verifyStatus: VerifyStatus;
+  creditScore: number;
+  orderCount: number;
+  status: 0 | 1;
+  forbiddenReason: string;
+  createdAt: IsoDateTime;
+  lastLoginAt: IsoDateTime | null;
+}
+
+export interface PlatformUserSummary {
+  total: number;
+  normal: number;
+  banned: number;
+  pendingVerification: number;
+}
+
+export interface ListPlatformUsersParams {
+  page?: number;
+  pageSize?: number;
+  keyword?: string;
+  status?: 0 | 1;
+  verifyStatus?: VerifyStatus;
+}
+
 export interface MerchantAuditRow {
   merchantId: Id;
   name: string;
@@ -593,6 +625,7 @@ export interface MerchantAuditRow {
   contactName: string;
   contactPhone: string;
   licenseNo: string;
+  rejectReason: string;
   pickupPointName: string;
   campusArea: string;
   status: MerchantStatus;

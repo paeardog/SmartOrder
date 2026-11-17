@@ -38,6 +38,7 @@ public final class PlatformDto {
             String pickupPointName,
             String campusArea,
             Integer status,
+            String rejectReason,
             Integer monthSold,
             Integer ratingScore,
             Boolean open,
@@ -57,6 +58,9 @@ public final class PlatformDto {
     }
 
     public record RejectRequest(String reason) {
+    }
+
+    public record MerchantStatusRequest(Integer status, Integer expectedStatus) {
     }
 
     public record ConfigSaveRequest(String configValue) {
