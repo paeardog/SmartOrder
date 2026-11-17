@@ -71,12 +71,14 @@ if /i "%MODE%"=="start" goto :need_toolchain
 if /i "%MODE%"=="build" goto :need_toolchain
 goto :skip_toolchain
 :need_toolchain
+echo status    checking Java and Maven
 call :resolve_java
 if errorlevel 1 goto :bye_fail
 call :resolve_maven
 if errorlevel 1 goto :bye_fail
 :skip_toolchain
 
+echo status    checking MySQL
 call :resolve_mysql
 if errorlevel 1 goto :bye_fail
 
@@ -141,6 +143,7 @@ if errorlevel 1 goto :bye_fail
 goto :bye_ok
 
 :do_start
+echo status    preparing the database
 call :prepare_db
 if errorlevel 1 goto :bye_fail
 set "BACKEND_STARTED=0"
@@ -153,11 +156,11 @@ set "H5_UP=0"
 set "CONSOLE_UP=0"
 call :resolve_lan_ip
 echo.
-echo Starting backend, web, h5 and console dev servers, then opening the pages.
+echo status    starting backend, web, h5 and console, the first run downloads dependencies
 echo logs      %APP_LOG%  %WEB_LOG%  %H5_LOG%  %CONSOLE_LOG%
-call :print_access
 echo.
 
+echo status    checking and starting the backend
 call :port_listening %APP_PORT%
 if "%PORT_UP%"=="1" goto :backend_up
 if defined DB_PASS set "SPRING_DATASOURCE_PASSWORD=%DB_PASS%"
@@ -168,7 +171,7 @@ if defined SO_DB_URL (
 set "BACKEND_STARTED=1"
 del "%APP_LOG%" >nul 2>&1
 echo backend   mvn spring-boot:run, a first run also downloads the Maven dependencies
-start "" /B cmd /c "call mvn -B -f server\pom.xml spring-boot:run > .tools\backend.log 2>&1"
+"%POWERSHELL%" -NoProfile -NonInteractive -Command "Start-Process -FilePath 'cmd.exe' -ArgumentList '/c call mvn -B -f server\pom.xml spring-boot:run > .tools\backend.log 2>&1' -WorkingDirectory '%ROOT%' -WindowStyle Hidden"
 call :wait_for_port %APP_PORT% %BACKEND_WAIT% "%APP_LOG%"
 if "%WAIT_RESULT%"=="up" goto :backend_up
 call :report_stopped backend "%APP_LOG%" %APP_PORT% %BACKEND_WAIT%
@@ -176,9 +179,10 @@ goto :start_web
 
 :backend_up
 set "BACKEND_UP=1"
-call :green_echo 后端启动成功！
+call :green_echo backend started
 
 :start_web
+echo status    checking and starting web, h5 and console
 if not "%START_WEB%"=="1" goto :web_disabled
 call :resolve_node
 if errorlevel 1 goto :web_failed
@@ -191,7 +195,7 @@ if "%PORT_UP%"=="1" goto :open_web
 set "WEB_STARTED=1"
 del "%WEB_LOG%" >nul 2>&1
 echo web       vite dev server on %WEB_PORT% ...
-start "" /B cmd /c "call pnpm dev:web > .tools\web.log 2>&1"
+"%POWERSHELL%" -NoProfile -NonInteractive -Command "Start-Process -FilePath 'cmd.exe' -ArgumentList '/c call pnpm dev:web > .tools\web.log 2>&1' -WorkingDirectory '%ROOT%' -WindowStyle Hidden"
 call :wait_for_port %WEB_PORT% %WEB_WAIT% "%WEB_LOG%"
 if "%WAIT_RESULT%"=="up" goto :open_web
 call :report_stopped web "%WEB_LOG%" %WEB_PORT% %WEB_WAIT%
@@ -199,7 +203,7 @@ goto :start_h5
 
 :open_web
 set "WEB_UP=1"
-call :green_echo Web 启动成功！
+call :green_echo web started
 if not "%OPEN_WEB%"=="1" goto :start_h5
 echo web       opening http://127.0.0.1:%WEB_PORT% in the browser
 start "" "http://127.0.0.1:%WEB_PORT%"
@@ -227,7 +231,7 @@ if "%PORT_UP%"=="1" goto :open_h5
 set "H5_STARTED=1"
 del "%H5_LOG%" >nul 2>&1
 echo h5        pnpm dev:h5 on apps\h5, port %H5_PORT% ...
-start "" /B cmd /c "call pnpm dev:h5 > .tools\h5.log 2>&1"
+"%POWERSHELL%" -NoProfile -NonInteractive -Command "Start-Process -FilePath 'cmd.exe' -ArgumentList '/c call pnpm dev:h5 > .tools\h5.log 2>&1' -WorkingDirectory '%ROOT%' -WindowStyle Hidden"
 call :wait_for_port %H5_PORT% %H5_WAIT% "%H5_LOG%"
 if "%WAIT_RESULT%"=="up" goto :open_h5
 call :report_stopped h5 "%H5_LOG%" %H5_PORT% %H5_WAIT%
@@ -235,7 +239,7 @@ goto :start_console
 
 :open_h5
 set "H5_UP=1"
-call :green_echo H5 启动成功！
+call :green_echo h5 started
 if not "%OPEN_H5%"=="1" goto :start_console
 echo h5        opening http://127.0.0.1:%H5_PORT% in the browser
 start "" "http://127.0.0.1:%H5_PORT%"
@@ -267,7 +271,7 @@ if "%PORT_UP%"=="1" goto :open_console
 set "CONSOLE_STARTED=1"
 del "%CONSOLE_LOG%" >nul 2>&1
 echo console   pnpm dev:console on apps\console, port %CONSOLE_PORT% ...
-start "" /B cmd /c "call pnpm dev:console > .tools\console.log 2>&1"
+"%POWERSHELL%" -NoProfile -NonInteractive -Command "Start-Process -FilePath 'cmd.exe' -ArgumentList '/c call pnpm dev:console > .tools\console.log 2>&1' -WorkingDirectory '%ROOT%' -WindowStyle Hidden"
 call :wait_for_port %CONSOLE_PORT% %CONSOLE_WAIT% "%CONSOLE_LOG%"
 if "%WAIT_RESULT%"=="up" goto :open_console
 call :report_stopped console "%CONSOLE_LOG%" %CONSOLE_PORT% %CONSOLE_WAIT%
@@ -275,7 +279,7 @@ goto :summary
 
 :open_console
 set "CONSOLE_UP=1"
-call :green_echo 商家端启动成功！
+call :green_echo console started
 if not "%OPEN_CONSOLE%"=="1" goto :summary
 echo console   opening http://127.0.0.1:%CONSOLE_PORT% in the browser
 start "" "http://127.0.0.1:%CONSOLE_PORT%"
@@ -299,23 +303,39 @@ echo ---------------- this run ----------------
 if "%BACKEND_UP%"=="1" echo backend   running, http://localhost:%APP_PORT%/api/v1/system/health
 if not "%BACKEND_UP%"=="1" echo backend   not running, reason above, more in %APP_LOG%
 if "%WEB_UP%"=="1" echo web       running, http://127.0.0.1:%WEB_PORT%
-if "%WEB_UP%"=="0" if "%WEB_STARTED%"=="0" if not "%START_WEB%"=="1" echo web       skipped by START_WEB
+if "%WEB_UP%"=="0" if "%WEB_STARTED%"=="1" echo web       failed to start, see %WEB_LOG%
+if "%WEB_UP%"=="0" if "%START_WEB%"=="1" if not "%WEB_STARTED%"=="1" echo web       not running, reason above
+if "%WEB_UP%"=="0" if not "%START_WEB%"=="1" echo web       skipped by START_WEB
 if "%H5_UP%"=="1" echo h5        running, http://127.0.0.1:%H5_PORT%
-if "%H5_UP%"=="0" if "%H5_STARTED%"=="0" if not "%START_H5%"=="1" echo h5        skipped by START_H5
+if "%H5_UP%"=="0" if "%H5_STARTED%"=="1" echo h5        failed to start, see %H5_LOG%
+if "%H5_UP%"=="0" if "%START_H5%"=="1" if not "%H5_STARTED%"=="1" echo h5        not running, reason above
+if "%H5_UP%"=="0" if not "%START_H5%"=="1" echo h5        skipped by START_H5
 if "%CONSOLE_UP%"=="1" echo console   running, http://127.0.0.1:%CONSOLE_PORT%
-if "%CONSOLE_UP%"=="0" if "%CONSOLE_STARTED%"=="0" if not "%START_CONSOLE%"=="1" echo console   skipped by START_CONSOLE
-if "%BACKEND_UP%"=="1" if "%WEB_UP%"=="1" if "%H5_UP%"=="1" if "%CONSOLE_UP%"=="1" call :green_echo 启动成功！后端、Web、H5 和商家端均已启动。
+if "%CONSOLE_UP%"=="0" if "%CONSOLE_STARTED%"=="1" echo console   failed to start, see %CONSOLE_LOG%
+if "%CONSOLE_UP%"=="0" if "%START_CONSOLE%"=="1" if not "%CONSOLE_STARTED%"=="1" echo console   not running, reason above
+if "%CONSOLE_UP%"=="0" if not "%START_CONSOLE%"=="1" echo console   skipped by START_CONSOLE
+set "RUN_OK=1"
+if not "%BACKEND_UP%"=="1" set "RUN_OK=0"
+if "%START_WEB%"=="1" if not "%WEB_UP%"=="1" set "RUN_OK=0"
+if "%START_H5%"=="1" if not "%H5_UP%"=="1" set "RUN_OK=0"
+if "%START_CONSOLE%"=="1" if not "%CONSOLE_UP%"=="1" set "RUN_OK=0"
+if "%RUN_OK%"=="1" call :green_echo all set, backend and the enabled dev servers are ready
+if not "%RUN_OK%"=="1" echo status    startup incomplete, see the state above and the logs
 echo db        %DB_HOST%:%DB_PORT%, data in %DATA_DIR%
+call :print_access
 echo.
-echo Press a key to stop what this run started, mysqld keeps running.
-echo start.bat stop shuts everything down, including the portable mysqld.
+if not "%RUN_OK%"=="1" goto :startup_incomplete
+echo The servers keep running in the background after this window closes.
+echo Run start.bat stop to shut the backend, the dev servers and mysqld down.
+echo Press any key to close this window.
+pause >nul
+goto :bye_ok
+
+:startup_incomplete
+echo Startup was incomplete, press any key to stop what this run started and close.
 pause >nul
 set "PAUSED=1"
 call :stop_started
-if "%BACKEND_UP%"=="1" goto :bye_ok
-if "%WEB_UP%"=="1" goto :bye_ok
-if "%H5_UP%"=="1" goto :bye_ok
-if "%CONSOLE_UP%"=="1" goto :bye_ok
 goto :bye_fail
 
 :green_echo
@@ -336,13 +356,14 @@ exit /b 0
 :print_access
 echo.
 echo ---------------- access ----------------
-echo health    http://localhost:%APP_PORT%/api/v1/system/health
-echo local     web     http://127.0.0.1:%WEB_PORT%
-echo           h5      http://127.0.0.1:%H5_PORT%
-echo           console http://127.0.0.1:%CONSOLE_PORT%
-if defined LAN_IP echo lan       web     http://%LAN_IP%:%WEB_PORT%
-if defined LAN_IP echo           h5      http://%LAN_IP%:%H5_PORT%
-if defined LAN_IP echo           console http://%LAN_IP%:%CONSOLE_PORT%
+if "%BACKEND_UP%%WEB_UP%%H5_UP%%CONSOLE_UP%"=="0000" echo address   no service answered, nothing to open
+if "%BACKEND_UP%"=="1" echo health    http://localhost:%APP_PORT%/api/v1/system/health
+if "%WEB_UP%"=="1" echo local     web     http://127.0.0.1:%WEB_PORT%
+if "%H5_UP%"=="1" echo           h5      http://127.0.0.1:%H5_PORT%
+if "%CONSOLE_UP%"=="1" echo           console http://127.0.0.1:%CONSOLE_PORT%
+if defined LAN_IP if "%WEB_UP%"=="1" echo lan       web     http://%LAN_IP%:%WEB_PORT%
+if defined LAN_IP if "%H5_UP%"=="1" echo           h5      http://%LAN_IP%:%H5_PORT%
+if defined LAN_IP if "%CONSOLE_UP%"=="1" echo           console http://%LAN_IP%:%CONSOLE_PORT%
 if not defined LAN_IP echo lan       not detected, run ipconfig and use the IPv4 address
 echo note      the dev servers listen on 0.0.0.0, so other devices use the lan address;
 echo note      0.0.0.0 is the listen address, not an address to open from another machine.
@@ -359,12 +380,14 @@ if not exist "%~2" (
   goto :report_end
 )
 set "TAIL_PATH=%~2"
-set "TAIL_PATH=%TAIL_PATH:'=''%"
 set "TAIL_LINES=0"
-for /f "usebackq delims=" %%L in (`"%POWERSHELL%" -NoProfile -NonInteractive -ExecutionPolicy Bypass -Command "Get-Content -LiteralPath '%TAIL_PATH%' -Tail 25" 2^>nul`) do (
+del "%PROBE_FILE%" >nul 2>&1
+"%POWERSHELL%" -NoProfile -NonInteractive -ExecutionPolicy Bypass -Command "Get-Content -LiteralPath $env:TAIL_PATH -Tail 25" > "%PROBE_FILE%" 2>nul
+if exist "%PROBE_FILE%" for /f "usebackq delims=" %%L in ("%PROBE_FILE%") do (
   echo   %%L
   set /a TAIL_LINES+=1
 )
+del "%PROBE_FILE%" >nul 2>&1
 if "%TAIL_LINES%"=="0" echo read %~2 by hand
 :report_end
 exit /b 0
@@ -381,8 +404,10 @@ if exist "%~3" call :log_has_error "%~3"
 if "%LOG_ERROR%"=="1" goto :wait_error
 set /a WAIT_TICKS+=1
 if %WAIT_TICKS% GEQ %WAIT_LIMIT% exit /b 0
-if %WAIT_TICKS%==30 echo           still waiting for port %~1
-if %WAIT_TICKS%==90 echo           still waiting, dependencies are fetched only once
+set /a WAIT_ELAPSED=WAIT_TICKS*2
+set /a WAIT_BUCKET=WAIT_TICKS/30
+set /a WAIT_REMAINDER=WAIT_TICKS-WAIT_BUCKET*30
+if %WAIT_REMAINDER%==0 echo           waiting for port %~1, %WAIT_ELAPSED%s elapsed
 goto :wait_loop
 :wait_up
 set "WAIT_RESULT=up"
@@ -680,8 +705,12 @@ set "MYSQLADMIN_EXE=%MYSQL_BIN%\mysqladmin.exe"
 exit /b 0
 
 :write_ini
-set "FWD_MYSQL=%MYSQL_HOME:\=/%"
-set "FWD_TOOLS=%TOOLS:\=/%"
+set "FWD_MYSQL=%MYSQL_HOME%"
+for %%I in ("%MYSQL_HOME%") do set "FWD_MYSQL=%%~sI"
+set "FWD_MYSQL=%FWD_MYSQL:\=/%"
+set "FWD_TOOLS=%TOOLS%"
+for %%I in ("%TOOLS%") do set "FWD_TOOLS=%%~sI"
+set "FWD_TOOLS=%FWD_TOOLS:\=/%"
 (
   echo [client]
   echo port=%DB_PORT%
@@ -689,8 +718,8 @@ set "FWD_TOOLS=%TOOLS:\=/%"
   echo.
   echo [mysqld]
   echo port=%DB_PORT%
-  echo basedir=%FWD_MYSQL%
-  echo datadir=%FWD_TOOLS%/mysqldata
+  echo basedir="%FWD_MYSQL%"
+  echo datadir="%FWD_TOOLS%/mysqldata"
   echo character-set-server=utf8mb4
   echo collation-server=utf8mb4_unicode_ci
   echo default-time-zone='+08:00'
@@ -698,10 +727,11 @@ set "FWD_TOOLS=%TOOLS:\=/%"
   echo max_connections=60
   echo innodb_buffer_pool_size=128M
   echo innodb_flush_log_at_trx_commit=2
-  echo log-error=%FWD_TOOLS%/mysql.log
-  echo pid-file=%FWD_TOOLS%/mysqld.pid
-  echo init-file=%FWD_TOOLS%/init-grants.sql
+  echo log-error="%FWD_TOOLS%/mysql.log"
+  echo pid-file="%FWD_TOOLS%/mysqld.pid"
+  echo init-file="%FWD_TOOLS%/init-grants.sql"
 ) > "%INI_FILE%"
+"%POWERSHELL%" -NoProfile -NonInteractive -Command "[IO.File]::WriteAllText($env:INI_FILE, [IO.File]::ReadAllText($env:INI_FILE, [Text.Encoding]::UTF8), [Text.Encoding]::Default)"
 (
   echo CREATE USER IF NOT EXISTS 'root'@'127.0.0.1' IDENTIFIED BY '%DB_PASS%';
   echo ALTER USER 'root'@'127.0.0.1' IDENTIFIED BY '%DB_PASS%';
@@ -740,7 +770,10 @@ if errorlevel 1 (
 "%MYSQLADMIN_EXE%" --protocol=tcp -h %DB_HOST% -P %DB_PORT% -u %DB_USER% ping >nul 2>&1
 if not errorlevel 1 goto :db_up
 echo db        not listening on %DB_PORT%, starting mysqld
-start "" /B "%MYSQL_BIN%\mysqld.exe" --defaults-file="%INI_FILE%" >nul 2>&1
+set "MYSQLD_EXE=%MYSQL_BIN%\mysqld.exe"
+set "MYSQL_INI=%INI_FILE%"
+for %%I in ("%INI_FILE%") do set "MYSQL_INI=%%~sI"
+"%POWERSHELL%" -NoProfile -NonInteractive -Command "Start-Process -FilePath $env:MYSQLD_EXE -ArgumentList ('--defaults-file=' + [char]34 + $env:MYSQL_INI + [char]34) -WindowStyle Hidden"
 set "DB_TRIES=0"
 :db_wait
 ping -n 2 127.0.0.1 >nul
@@ -908,7 +941,8 @@ echo SmartOrder bootstrap and launcher.
 echo.
 echo   start.bat            fetch whatever is missing, prepare the database and the
 echo                        data, run the backend, start the web, H5 and console dev
-echo                        servers, open the pages
+echo                        servers, open the pages, then wait for a key; closing the
+echo                        window leaves all servers running in the background
 echo   start.bat db         only bring the database up and make sure it is populated
 echo   start.bat reset      drop every table, re-import schema.sql, seed.sql and the migrations
 echo   start.bat check      static check, flyway diff and the real MySQL test suite
@@ -931,8 +965,9 @@ echo Web: pnpm dev:web, H5: pnpm dev:h5, console: pnpm dev:console.
 echo Set OPEN_WEB=0, OPEN_H5=0 or OPEN_CONSOLE=0 to keep a browser closed;
 echo START_WEB=0, START_H5=0 or START_CONSOLE=0 skips the respective dev server.
 echo Ports default to WEB_PORT=5174, H5_PORT=5173 and CONSOLE_PORT=5175.
-echo The three dev servers listen on 0.0.0.0. Each run prints the local 127.0.0.1
-echo addresses and this machine's LAN address for phones and other computers.
+echo The three dev servers listen on 0.0.0.0. The addresses are printed after the
+echo servers were started, with this machine's LAN address for phones and other
+echo computers. start.bat stop shuts the backend, the dev servers and mysqld down.
 echo Logs: .tools\backend.log, .tools\web.log, .tools\h5.log and .tools\console.log.
 echo BACKEND_WAIT, WEB_WAIT, H5_WAIT and CONSOLE_WAIT control startup timeouts in seconds.
 echo.
