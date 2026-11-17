@@ -12,6 +12,7 @@ import {
 } from "@smartorder/shared";
 import OrderTag from "../components/OrderTag.vue";
 import UiModal from "../components/UiModal.vue";
+import { consoleStore } from "../stores/session";
 import { toastError, toastOk } from "../stores/toasts";
 
 const TABS: ReadonlyArray<{ key: OrderStatus | "ALL"; label: string }> = [
@@ -41,6 +42,8 @@ const error = ref("");
 const detail = ref<MerchantOrderRow | null>(null);
 const auditing = ref<MerchantOrderRow | null>(null);
 const auditNote = ref("");
+const auditSubmitting = ref(false);
+const canAudit = computed(() => consoleStore.account?.roleCode === "MERCHANT_OWNER");
 
 const pages = computed(() => Math.max(1, Math.ceil(total.value / pageSize.value)));
 const amountSum = computed(() => rows.value.reduce((sum, row) => sum + row.payAmount, 0));
@@ -93,16 +96,24 @@ function openAudit(row: MerchantOrderRow): void {
 async function submitAudit(approve: boolean): Promise<void> {
   const row = auditing.value;
   const refundNo = row?.refund?.refundNo;
-  if (!refundNo) {
+  if (!refundNo || auditSubmitting.value || !canAudit.value) {
     return;
   }
+  const note = auditNote.value.trim();
+  if (!approve && note === "") {
+    toastError("驳回时请填写原因");
+    return;
+  }
+  auditSubmitting.value = true;
   try {
-    await refunds.audit(refundNo, { approved: approve, note: auditNote.value.trim() });
+    await refunds.audit(refundNo, { approved: approve, note });
     auditing.value = null;
     toastOk(approve ? "已同意退款" : "已驳回退款");
     await load();
   } catch (caught) {
     toastError(caught instanceof ApiError ? caught.message : "退款处理失败");
+  } finally {
+    auditSubmitting.value = false;
   }
 }
 
@@ -208,7 +219,7 @@ onMounted(() => void load());
               <td class="so-order__opt">{{ row.remark || "-" }}</td>
               <td class="so-cell--act">
                 <button
-                  v-if="row.status === 'REFUNDING' && row.refund"
+                  v-if="canAudit && row.status === 'REFUNDING' && row.refund?.status === 'PENDING'"
                   class="so-btn so-btn--primary so-btn--sm"
                   type="button"
                   @click="openAudit(row)"
@@ -285,17 +296,17 @@ onMounted(() => void load());
       </template>
     </UiModal>
 
-    <UiModal v-if="auditing" title="退款申请" @close="auditing = null">
+    <UiModal v-if="auditing" title="退款申请" @close="!auditSubmitting && (auditing = null)">
       <div class="so-kv"><span class="so-kv__key">订单</span><span class="so-kv__val">{{ auditing.orderNo }}</span></div>
       <div class="so-kv"><span class="so-kv__key">退款金额</span><span class="so-kv__val">{{ formatYuan(auditing.refund?.refundAmount ?? 0) }}</span></div>
       <div class="so-kv"><span class="so-kv__key">顾客理由</span><span class="so-kv__val">{{ auditing.refund?.reason || "未填写" }}</span></div>
       <label class="so-field" style="margin-top: 0.9rem">
         <span class="so-field__label">处理说明</span>
-        <textarea v-model="auditNote" class="so-textarea" placeholder="驳回时请写清楚原因" />
+        <textarea v-model="auditNote" class="so-textarea" maxlength="255" :disabled="auditSubmitting" placeholder="驳回时请写清楚原因" />
       </label>
       <template #footer>
-        <button class="so-btn so-btn--secondary" type="button" @click="submitAudit(false)">驳回</button>
-        <button class="so-btn so-btn--ok" type="button" @click="submitAudit(true)">同意退款</button>
+        <button class="so-btn so-btn--secondary" type="button" :disabled="auditSubmitting" @click="submitAudit(false)">驳回</button>
+        <button class="so-btn so-btn--ok" type="button" :disabled="auditSubmitting" @click="submitAudit(true)">{{ auditSubmitting ? "处理中" : "同意退款" }}</button>
       </template>
     </UiModal>
   </div>

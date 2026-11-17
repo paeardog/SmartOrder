@@ -17,7 +17,7 @@ public final class OrderStateMachine {
         declare(OrderStatus.COOKING, OrderStatus.READY, OrderStatus.REFUNDING);
         declare(OrderStatus.READY, OrderStatus.COMPLETED);
         declare(OrderStatus.REJECTED, OrderStatus.REFUNDING);
-        declare(OrderStatus.REFUNDING, OrderStatus.REFUNDED, OrderStatus.PAID, OrderStatus.ACCEPTED);
+        declare(OrderStatus.REFUNDING, OrderStatus.REFUNDED, OrderStatus.PAID, OrderStatus.ACCEPTED, OrderStatus.COOKING);
         terminal(OrderStatus.COMPLETED, OrderStatus.CANCELLED, OrderStatus.CLOSED, OrderStatus.REFUNDED);
     }
 
@@ -56,8 +56,19 @@ public final class OrderStateMachine {
     }
 
     public static StockEffect stockEffect(OrderStatus from, OrderStatus to) {
-        if (from == null || to == null || from == to) {
+        return stockEffect(from, to, null);
+    }
+
+    public static StockEffect stockEffect(OrderStatus from, OrderStatus to, OrderStatus refundSource) {
+        if (from == null || to == null || from == to || to == OrderStatus.REFUNDING) {
             return StockEffect.NONE;
+        }
+        if (from == OrderStatus.REFUNDING) {
+            if (!allowed(refundSource, OrderStatus.REFUNDING)) {
+                throw new IllegalArgumentException("退款库存流转缺少有效的原状态");
+            }
+            return to == OrderStatus.REFUNDED && refundSource.holdsLockedStock()
+                    ? StockEffect.RELEASE_LOCK : StockEffect.NONE;
         }
         boolean fromHeld = from.holdsLockedStock();
         boolean toHeld = to.holdsLockedStock();

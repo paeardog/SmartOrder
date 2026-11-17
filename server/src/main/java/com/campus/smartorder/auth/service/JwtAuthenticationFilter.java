@@ -32,6 +32,7 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
             "/api/v1/auth/refresh",
             "/api/v1/auth/logout",
             "/api/v1/auth/console/login",
+            "/api/v1/auth/rider/login",
             "/api/v1/system/",
             "/api/v1/merchants",
             "/api/v1/pickup-points",

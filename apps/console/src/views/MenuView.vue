@@ -272,7 +272,7 @@ function editDish(categoryId: string, dishId: string): void {
         name: option.name,
         priceYuan: centsToYuanInput(option.priceDelta),
         isDefault: option.isDefault,
-        stockText: option.stock === null ? "" : String(option.stock),
+        stockText: option.stock == null ? "" : String(option.stock),
       })),
     })),
   };

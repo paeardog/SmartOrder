@@ -1,7 +1,7 @@
 import { configureRequest } from "@smartorder/api-client";
 import { applyTheme, readThemeMode, syncServerClock } from "@smartorder/shared";
 import { router } from "./router";
-import { clearTokens, tokenStore } from "./stores/session";
+import { clearTokens, refreshSession, tokenStore } from "./stores/session";
 
 function setVh(): void {
   document.documentElement.style.setProperty("--vh-100", `${window.innerHeight}px`);
@@ -16,6 +16,7 @@ export async function bootApi(): Promise<void> {
   configureRequest({
     baseUrl: import.meta.env.VITE_API_BASE ?? "/api/v1",
     token: () => tokenStore.access,
+    refresh: refreshSession,
     onUnauthorized: () => {
       clearTokens();
       const route = router.currentRoute.value;

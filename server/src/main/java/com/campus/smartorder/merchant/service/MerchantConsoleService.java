@@ -10,6 +10,7 @@ import com.campus.smartorder.common.config.SmartOrderProperties;
 import com.campus.smartorder.console.ConsoleAccountService;
 import com.campus.smartorder.console.ConsoleDto;
 import com.campus.smartorder.console.ConsoleOrderAssembler;
+import com.campus.smartorder.delivery.service.DeliveryService;
 import com.campus.smartorder.events.EventStreamService;
 import com.campus.smartorder.merchant.domain.Dish;
 import com.campus.smartorder.merchant.domain.Merchant;
@@ -17,6 +18,7 @@ import com.campus.smartorder.merchant.mapper.DishMapper;
 import com.campus.smartorder.merchant.mapper.DishStockMapper;
 import com.campus.smartorder.notify.domain.NotifyMessage;
 import com.campus.smartorder.notify.mapper.NotifyMessageMapper;
+import com.campus.smartorder.order.domain.FulfillmentType;
 import com.campus.smartorder.order.domain.OperatorType;
 import com.campus.smartorder.order.domain.Order;
 import com.campus.smartorder.order.domain.OrderItem;
@@ -66,6 +68,7 @@ public class MerchantConsoleService {
     private final ConsoleOrderAssembler assembler;
     private final ConsoleAccountService accountService;
     private final EventStreamService eventStreamService;
+    private final DeliveryService deliveryService;
     private final SmartOrderProperties properties;
 
     public MerchantConsoleService(OrderMapper orderMapper, OrderItemMapper orderItemMapper,
@@ -73,7 +76,7 @@ public class MerchantConsoleService {
                                   DishStockMapper stockMapper, NotifyMessageMapper notifyMessageMapper,
                                   MerchantProfileService profileService, ConsoleOrderAssembler assembler,
                                   ConsoleAccountService accountService, EventStreamService eventStreamService,
-                                  SmartOrderProperties properties) {
+                                  DeliveryService deliveryService, SmartOrderProperties properties) {
         this.orderMapper = orderMapper;
         this.orderItemMapper = orderItemMapper;
         this.statusLogMapper = statusLogMapper;
@@ -84,6 +87,7 @@ public class MerchantConsoleService {
         this.assembler = assembler;
         this.accountService = accountService;
         this.eventStreamService = eventStreamService;
+        this.deliveryService = deliveryService;
         this.properties = properties;
     }
 
@@ -190,13 +194,17 @@ public class MerchantConsoleService {
 
         int rows = orderMapper.casMarkReady(order.getId(), pickupCode, pickupDeadlineAt);
         recheck(rows, order, OrderStatus.READY);
+        Order fresh = orderMapper.selectById(order.getId());
+        deliveryService.enqueue(fresh);
 
         applyStock(order, from, OrderStatus.READY);
         writeLog(order, from, OrderStatus.READY, accountId, "出餐完成", clientIp);
 
         Merchant merchant = profileService.require(merchantId);
-        notify(order.getUserId(), SCENE_ORDER_READY, "可以取餐了",
-                Ids.blank(merchant.getName()) + " 已出餐，取餐码 " + pickupCode + "，请及时取餐",
+        boolean delivery = fresh.getFulfillmentType() == FulfillmentType.DELIVERY;
+        notify(order.getUserId(), SCENE_ORDER_READY, delivery ? "餐品已出餐，等候配送" : "可以取餐了",
+                delivery ? Ids.blank(merchant.getName()) + " 已出餐，正在等候配送员取餐"
+                        : Ids.blank(merchant.getName()) + " 已出餐，取餐码 " + pickupCode + "，请及时取餐",
                 order.getOrderNo(), Map.of("pickupCode", pickupCode, "status", OrderStatus.READY.name()));
 
         return afterChange(order, OrderStatus.READY);
@@ -206,6 +214,9 @@ public class MerchantConsoleService {
     public ConsoleDto.OrderView verify(Long merchantId, Long accountId, String orderNo,
                                        String pickupCode, String clientIp) {
         Order order = requireOrder(merchantId, orderNo);
+        if (order.getFulfillmentType() == FulfillmentType.DELIVERY) {
+            throw BizException.of(ErrorCode.ORDER_STATUS_ILLEGAL, "配送订单须由配送员取餐并确认送达，不能直接核销");
+        }
         String code = pickupCode == null ? "" : pickupCode.trim();
         if (code.isEmpty() || !code.equals(Ids.blank(order.getPickupCode()).trim())) {
             throw new BizException(ErrorCode.PICKUP_CODE_INVALID);

@@ -19,6 +19,10 @@ import type {
   CreateRefundRequest,
   CreateReviewRequest,
   DateOverrideSaveRequest,
+  DeliveryTask,
+  DeliveryTaskScope,
+  RiderProfile,
+  RiderSession,
   DishDailyStat,
   DishDetail,
   DishSaveRequest,
@@ -75,12 +79,24 @@ export const auth = {
   smsSend: (phone: string) => post<{ expireSeconds: number }>("/auth/sms/send", { phone }),
   smsVerify: (phone: string, code: string) => post<Session>("/auth/sms/verify", { phone, code }),
   passwordLogin: (studentNo: string, password: string) => post<Session>("/auth/password/login", { studentNo, password }),
+  riderLogin: (studentNo: string, password: string) =>
+    post<RiderSession>("/auth/rider/login", { studentNo, password }, { withToken: false }),
   register: (studentNo: string, password: string, nickname?: string) =>
     post<Session>("/auth/register", { studentNo, password, nickname }),
-  refresh: (refreshToken: string) => post<TokenPair>("/auth/refresh", { refreshToken }),
+  refresh: (refreshToken: string) => post<TokenPair>("/auth/refresh", { refreshToken }, { withToken: false }),
   logout: (refreshToken: string) => post<null>("/auth/logout", { refreshToken }),
   profile: () => get<UserProfile>("/auth/profile"),
   consoleLogin: (username: string, password: string) => post<ConsoleSession>("/auth/console/login", { username, password }),
+};
+
+export const rider = {
+  profile: () => get<RiderProfile>("/rider/profile"),
+  status: (status: 1 | 2) => patch<RiderProfile>("/rider/status", { status }),
+  tasks: (scope: DeliveryTaskScope, page = 1, pageSize = 20) =>
+    get<Page<DeliveryTask>>("/rider/tasks", { scope, page, pageSize }),
+  accept: (deliveryId: Id) => post<DeliveryTask>(`/rider/tasks/${deliveryId}/accept`),
+  pick: (deliveryId: Id) => post<DeliveryTask>(`/rider/tasks/${deliveryId}/pick`),
+  deliver: (deliveryId: Id) => post<DeliveryTask>(`/rider/tasks/${deliveryId}/deliver`),
 };
 
 export const system = {

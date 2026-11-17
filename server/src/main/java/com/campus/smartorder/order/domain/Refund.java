@@ -13,6 +13,7 @@ public class Refund {
 
     public static final String STATUS_PENDING = "PENDING";
     public static final String STATUS_SUCCEEDED = "SUCCEEDED";
+    public static final String STATUS_REJECTED = "REJECTED";
 
     @TableId(type = IdType.AUTO)
     private Long id;

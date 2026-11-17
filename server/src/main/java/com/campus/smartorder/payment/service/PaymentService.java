@@ -144,6 +144,19 @@ public class PaymentService {
         return PaymentDto.of(payment, order);
     }
 
+    public void requireRefundablePayment(Long orderId, int refundAmount) {
+        Payment payment = paymentMapper.selectLatestByOrderId(orderId);
+        if (payment == null || payment.getStatus() != PaymentStatus.SUCCESS) {
+            throw new BizException(ErrorCode.PAYMENT_NOT_FOUND);
+        }
+        if (!"MOCK".equals(payment.getChannel())) {
+            throw new BizException(ErrorCode.PAYMENT_CHANNEL_DISABLED, "该支付渠道暂未接入退款");
+        }
+        if (payment.getPayAmount() == null || payment.getPayAmount() != refundAmount) {
+            throw new BizException(ErrorCode.PAYMENT_AMOUNT_MISMATCH);
+        }
+    }
+
     private void applyTakePlan(Order order, LocalDateTime now) {
         Merchant merchant = merchantMapper.selectById(order.getMerchantId());
         int prepareMinutes = merchant == null || merchant.getAvgPrepareMinutes() == null

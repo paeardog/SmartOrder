@@ -180,6 +180,10 @@ INSERT INTO `u_user` (`id`, `phone`, `password_hash`, `nickname`, `avatar_url`, 
 (2, '13800000002', '', '小鹿', '', '李鹿', '2022010102', '软件学院', '中心校区', '紫荆公寓 5 栋', 1, 2, 96, 8, 1),
 (3, NULL, '', '未认证访客', '', '', '', '', '南校区', '', 2, 0, 100, 0, 1);
 
+-- TODO(上线前): 移除演示配送员资格，实际配送员由平台审核后开通
+INSERT INTO `d_rider` (`user_id`, `real_name`, `phone`, `campus_area`, `dorm_building`, `status`) VALUES
+(1, '张狗蛋', '13800000001', '中心校区', '紫荆公寓 3 栋', 1);
+
 INSERT INTO `u_campus_binding` (`user_id`, `sso_provider`, `sso_uid`, `last_login_at`) VALUES
 (1, 'CAS', '2022010101', NOW(3)),
 (2, 'CAS', '2022010102', NOW(3));

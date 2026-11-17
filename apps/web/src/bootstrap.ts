@@ -1,12 +1,13 @@
 import { configureRequest } from "@smartorder/api-client";
 import { syncServerClock } from "@smartorder/shared";
 import { router } from "./router";
-import { clearTokens, setTokens, tokenStore } from "./stores/session";
+import { clearTokens, refreshSession, tokenStore } from "./stores/session";
 
 export async function bootApi(): Promise<void> {
   configureRequest({
     baseUrl: import.meta.env.VITE_API_BASE ?? "/api/v1",
     token: () => tokenStore.access,
+    refresh: refreshSession,
     onUnauthorized: () => {
       clearTokens();
       const route = router.currentRoute.value;

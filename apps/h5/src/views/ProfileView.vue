@@ -82,6 +82,14 @@
         </div>
       </section>
 
+      <section class="profile-card so-card profile-card--rows">
+        <div class="profile-row" @click="router.push({ name: 'rider-pool' })">
+          <span class="profile-row__icon profile-row__icon--green"><van-icon name="logistics" size="16" /></span>
+          <span class="profile-row__label">配送员入口</span>
+          <van-icon name="arrow" class="profile-row__arrow" />
+        </div>
+      </section>
+
       <section v-if="profile" class="profile-card so-card profile-card--logout">
         <van-button plain type="default" block @click="logout">退出登录</van-button>
       </section>

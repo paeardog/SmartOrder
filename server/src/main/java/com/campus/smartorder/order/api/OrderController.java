@@ -91,6 +91,7 @@ public class OrderController {
                 Payloads.text(body, "contactName"),
                 Payloads.text(body, "contactPhone"),
                 fulfillment(Payloads.text(body, "fulfillmentType")),
+                Ids.parse(Payloads.text(body, "addressId")),
                 Ids.parse(Payloads.text(body, "couponId")),
                 clientOrderNo);
     }

@@ -25,6 +25,14 @@ public final class ConsoleAccess {
 
     public static void enforce(String path, String subjectType, String roleCode, String method) {
         String role = roleCode == null ? "" : roleCode;
+        if (path.startsWith("/api/v1/rider/") && !JwtTokenProvider.SUBJECT_USER.equals(subjectType)) {
+            throw new BizException(ErrorCode.FORBIDDEN, "请使用已审核的配送员账号登录");
+        }
+        if (path.startsWith("/api/v1/refunds/") && path.endsWith("/audit")) {
+            if (!JwtTokenProvider.SUBJECT_ACCOUNT.equals(subjectType) || !ROLE_MERCHANT_OWNER.equals(role)) {
+                throw new BizException(ErrorCode.FORBIDDEN, "退款审核请联系档口负责人");
+            }
+        }
         if (path.startsWith(MERCHANT_PREFIX)) {
             if (!JwtTokenProvider.SUBJECT_ACCOUNT.equals(subjectType) || !role.startsWith(MERCHANT_ROLE_PREFIX)) {
                 throw new BizException(ErrorCode.FORBIDDEN);

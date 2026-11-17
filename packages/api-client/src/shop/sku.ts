@@ -9,7 +9,7 @@ export function optionAvailable(option: MenuOption): boolean {
   if (option.soldOut) {
     return false;
   }
-  return option.stock === null || option.stock > 0;
+  return option.stock == null || option.stock > 0;
 }
 
 export function availableOptions(group: OptionGroup): MenuOption[] {
@@ -111,7 +111,7 @@ export function comboRemaining(dish: DishSummary, selection: SkuSelection): numb
   }
   const optionStocks = chosenOptions(dish, selection)
     .map((item) => item.option.stock)
-    .filter((value): value is number => value !== null);
+    .filter((value): value is number => value != null);
   const optionLimit = optionStocks.length === 0 ? 999 : Math.min(...optionStocks);
   return Math.max(0, Math.min(dish.stock.remaining, optionLimit));
 }

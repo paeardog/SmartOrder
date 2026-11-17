@@ -15,6 +15,9 @@ import java.util.List;
 @Mapper
 public interface OrderMapper extends BaseMapper<Order> {
 
+    @Select("SELECT * FROM o_order WHERE id = #{orderId} FOR UPDATE")
+    Order selectByIdForUpdate(@Param("orderId") Long orderId);
+
     @Update("""
             UPDATE o_order
                SET status = 'PAID', paid_at = NOW(3), version = version + 1
@@ -49,9 +52,25 @@ public interface OrderMapper extends BaseMapper<Order> {
     @Update("""
             UPDATE o_order
                SET status = 'COMPLETED', taken_at = NOW(3), finished_at = NOW(3), version = version + 1
-             WHERE id = #{orderId} AND status = 'READY'
+             WHERE id = #{orderId} AND status = 'READY' AND fulfillment_type = 'PICKUP'
             """)
     int casComplete(@Param("orderId") Long orderId);
+
+    @Update("""
+            UPDATE o_order
+               SET taken_at = NOW(3), version = version + 1
+             WHERE id = #{orderId} AND status = 'READY' AND fulfillment_type = 'DELIVERY'
+               AND taken_at IS NULL
+            """)
+    int casDeliveryPicked(@Param("orderId") Long orderId);
+
+    @Update("""
+            UPDATE o_order
+               SET status = 'COMPLETED', finished_at = NOW(3), version = version + 1
+             WHERE id = #{orderId} AND status = 'READY' AND fulfillment_type = 'DELIVERY'
+               AND taken_at IS NOT NULL
+            """)
+    int casDeliveryDelivered(@Param("orderId") Long orderId);
 
     @Update("""
             UPDATE o_order
@@ -131,7 +150,7 @@ public interface OrderMapper extends BaseMapper<Order> {
 
     @Select("""
             SELECT id FROM o_order
-             WHERE status = 'READY' AND pickup_deadline_at < #{now}
+             WHERE status = 'READY' AND fulfillment_type = 'PICKUP' AND pickup_deadline_at < #{now}
              ORDER BY pickup_deadline_at
              LIMIT #{limit}
             """)

@@ -65,11 +65,11 @@
               <van-icon name="arrow" size="12" />
             </button>
           </div>
-          <div class="detail-row"><span>取餐方式</span><b>{{ fulfillText }}</b></div>
-          <div class="detail-row"><span>取餐点</span><b>{{ detail.pickupPointName }}</b></div>
+          <div class="detail-row"><span>{{ isDelivery ? '配送方式' : '取餐方式' }}</span><b>{{ fulfillText }}</b></div>
+          <div class="detail-row"><span>{{ isDelivery ? '出餐点' : '取餐点' }}</span><b>{{ detail.pickupPointName }}</b></div>
           <div class="detail-row"><span>联系人</span><b class="so-num">{{ detail.contactName }} {{ maskPhone(detail.contactPhone) }}</b></div>
           <div v-if="detail.remark !== ''" class="detail-row"><span>备注</span><b class="detail-row__wrap">{{ detail.remark }}</b></div>
-          <div v-if="expectText !== ''" class="detail-row"><span>预计取餐</span><b>{{ expectText }}</b></div>
+          <div v-if="!isDelivery && expectText !== ''" class="detail-row"><span>预计取餐</span><b>{{ expectText }}</b></div>
         </section>
 
         <section class="detail-card so-card">
@@ -192,17 +192,29 @@ const reasonOpen = ref(false);
 const countdownText = ref("");
 let ticker: number | null = null;
 let poller: number | null = null;
+let alive = true;
+let requestSequence = 0;
+let inFlight = false;
 
 const reasonActions = REASONS.map((name) => ({ name }));
 
-const hero = computed(() =>
-  detail.value
-    ? orderHero(detail.value.status, detail.value, { reviewed: reviewed.value })
-    : { tone: "process" as const, icon: "clock-o", title: "", hint: "" },
-);
-const showCode = computed(() => detail.value !== null && (detail.value.pickupCode ?? "") !== "" && ["PAID", "ACCEPTED", "COOKING", "READY"].includes(detail.value.status));
+const isDelivery = computed(() => detail.value?.fulfillmentType === "DELIVERY");
+const hero = computed(() => {
+  if (!detail.value) return { tone: "process" as const, icon: "clock-o", title: "", hint: "" };
+  const base = orderHero(detail.value.status, detail.value, { reviewed: reviewed.value });
+  if (!isDelivery.value) return base;
+  if (detail.value.status === "READY") {
+    return { ...base, icon: "logistics", title: "配送进度", hint: "餐品已出餐，等待配送员取餐或正在配送，无需到店自取" };
+  }
+  if (["ACCEPTED", "COOKING"].includes(detail.value.status)) {
+    return { ...base, hint: "档口正在备餐，出餐后由配送员送往寝室" };
+  }
+  if (detail.value.status === "COMPLETED") return { ...base, title: "已送达" };
+  return base;
+});
+const showCode = computed(() => !isDelivery.value && detail.value !== null && (detail.value.pickupCode ?? "") !== "" && ["PAID", "ACCEPTED", "COOKING", "READY"].includes(detail.value.status));
 const isFlow = computed(() => detail.value !== null && stepIndexOf(detail.value.status) >= 0);
-const steps = STEPS;
+const steps = computed(() => isDelivery.value ? ["提交订单", "完成支付", "档口备餐", "配送进度", "已送达"] : STEPS);
 const stepIndex = computed(() => (detail.value ? stepIndexOf(detail.value.status) : -1));
 
 const actions = computed(() =>
@@ -237,6 +249,7 @@ const cancelHint = computed(() => {
 });
 
 const readyHint = computed(() => {
+  if (isDelivery.value) return "配送准备与送达进度将持续更新，请保持电话畅通";
   if (!detail.value) {
     return "";
   }
@@ -266,6 +279,8 @@ function remaining(iso: string | null): number | null {
 }
 
 function statusLabel(status: OrderStatus): string {
+  if (isDelivery.value && status === "READY") return "配送准备";
+  if (isDelivery.value && status === "COMPLETED") return "已送达";
   return ORDER_STATUS_LABELS[status] ?? status;
 }
 
@@ -294,7 +309,8 @@ function refundStatusText(status: RefundStatus): string {
 }
 
 function logNote(log: OrderStatusLogDto): string {
-  const parts = [log.operatorName, log.note].filter((part) => part !== "");
+  const note = isDelivery.value && log.toStatus === "READY" && log.fromStatus !== "READY" ? "餐品已出餐，由配送员取餐并送往寝室" : log.note;
+  const parts = [log.operatorName, note].filter((part) => part !== "");
   return parts.join(" · ");
 }
 
@@ -314,25 +330,32 @@ function tick(): void {
 }
 
 async function load(showSkeleton: boolean): Promise<void> {
+  if (!alive || inFlight) return;
+  const mine = ++requestSequence;
+  inFlight = true;
   if (showSkeleton) {
     refreshing.value = true;
   }
   try {
     const next = await ordersApi.detail(props.orderNo);
+    if (!alive || mine !== requestSequence) return;
     detail.value = next;
     orderStore.upsertDetail(next);
     cacheWrite(`order.${props.orderNo}`, next, 24 * 60 * 60_000);
     offlineText.value = "";
     if (next.status === "COMPLETED") {
-      reviewed.value = (await reviewsApi.byOrder(next.orderNo)) !== null;
+      const review = await reviewsApi.byOrder(next.orderNo);
+      if (!alive || mine !== requestSequence) return;
+      reviewed.value = review !== null;
     }
     tick();
   } catch (error) {
+    if (!alive || mine !== requestSequence) return;
     if (detail.value === null) {
       const cached = cachePeek<OrderDetail>(`order.${props.orderNo}`);
       if (cached !== null) {
         detail.value = cached;
-        offlineText.value = "现在是离线内容，取餐码依然可以给店员看";
+        offlineText.value = cached.fulfillmentType === "DELIVERY" ? "现在是离线内容，配送进度请联网后刷新" : "现在是离线内容，取餐码依然可以给店员看";
         tick();
       } else {
         offlineText.value = "网络没连上，稍后再试一次";
@@ -341,8 +364,11 @@ async function load(showSkeleton: boolean): Promise<void> {
       reportError(error);
     }
   } finally {
-    loading.value = false;
-    refreshing.value = false;
+    if (alive && mine === requestSequence) {
+      inFlight = false;
+      loading.value = false;
+      refreshing.value = false;
+    }
   }
 }
 
@@ -417,15 +443,18 @@ onMounted(async () => {
     offlineText.value = "先显示上次的内容";
   }
   await load(false);
+  if (!alive) return;
   ticker = window.setInterval(tick, 1000);
   poller = window.setInterval(() => {
-    if (document.visibilityState === "visible" && detail.value && ["PENDING_PAYMENT", "PAID", "ACCEPTED", "COOKING"].includes(detail.value.status)) {
+    if (document.visibilityState === "visible" && detail.value && (["PENDING_PAYMENT", "PAID", "ACCEPTED", "COOKING"].includes(detail.value.status) || (isDelivery.value && detail.value.status === "READY"))) {
       void load(false);
     }
   }, 15_000);
 });
 
 onUnmounted(() => {
+  alive = false;
+  requestSequence += 1;
   if (ticker !== null) {
     window.clearInterval(ticker);
   }

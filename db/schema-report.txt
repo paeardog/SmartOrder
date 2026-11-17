@@ -2,7 +2,7 @@ schema    C:\DesktopFile\Smartorder\db\schema.sql
 语句块    73 → 解析成功 69,跳过 4(SET/USE),失败 0
 规模      34 表 / 450 列 / 71 索引(唯一 25) / 23 外键
 重建      DROP TABLE IF EXISTS 34 条,与建表清单一一对应
-seed      seed.sql → 58 语句块,23 条 INSERT 解析成功,写入 23 张表共 185 行
+seed      seed.sql → 59 语句块,24 条 INSERT 解析成功,写入 24 张表共 186 行
 
 表清单
   sys_account            列 13  索引  2  外键 0  操作者账号

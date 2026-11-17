@@ -6,7 +6,9 @@ import com.campus.smartorder.common.api.ErrorCode;
 import com.campus.smartorder.common.api.Ids;
 import com.campus.smartorder.common.config.SmartOrderProperties;
 import com.campus.smartorder.user.api.AddressDto;
+import com.campus.smartorder.user.domain.PickupPoint;
 import com.campus.smartorder.user.domain.UserAddress;
+import com.campus.smartorder.user.mapper.PickupPointMapper;
 import com.campus.smartorder.user.mapper.UserAddressMapper;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -33,10 +35,13 @@ public class AddressService {
             DateTimeFormatter.ofPattern("yyyy-MM-dd'T'HH:mm:ss.SSSxxx");
 
     private final UserAddressMapper addressMapper;
+    private final PickupPointMapper pickupPointMapper;
     private final ZoneId zone;
 
-    public AddressService(UserAddressMapper addressMapper, SmartOrderProperties properties) {
+    public AddressService(UserAddressMapper addressMapper, PickupPointMapper pickupPointMapper,
+                          SmartOrderProperties properties) {
         this.addressMapper = addressMapper;
+        this.pickupPointMapper = pickupPointMapper;
         this.zone = properties.zone();
     }
 
@@ -115,7 +120,17 @@ public class AddressService {
         return toItems(liveRows(userId));
     }
 
-    private UserAddress requireOwned(Long userId, Long addressId) {
+    public UserAddress requireDeliveryAddress(Long userId, Long addressId, Long pickupPointId) {
+        UserAddress address = requireOwned(userId, addressId);
+        PickupPoint point = pickupPointId == null ? null : pickupPointMapper.selectById(pickupPointId);
+        String campusArea = trimmed(address.getCampusArea());
+        if (point == null || campusArea.isEmpty() || !campusArea.equals(trimmed(point.getCampusArea()))) {
+            throw BizException.of(ErrorCode.INVALID_PARAM, "配送地址与商家不在同一校区，请重新选择地址");
+        }
+        return address;
+    }
+
+    public UserAddress requireOwned(Long userId, Long addressId) {
         if (userId == null) {
             throw BizException.of(ErrorCode.UNAUTHORIZED);
         }

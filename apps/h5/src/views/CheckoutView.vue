@@ -360,6 +360,8 @@ const scanOpen = ref(false);
 const scanMerchants = ref<MerchantSummary[]>([]);
 const couponManual = ref(false);
 
+const clientOrderNo = createClientOrderNo(tokenStore.profile?.userId ?? "guest");
+
 let seq = 0;
 let queue: number | null = null;
 let lastSubmitAt = 0;
@@ -545,6 +547,7 @@ async function runPreflight(): Promise<void> {
       merchantId: target.merchantId,
       cartItemIds: ids,
       fulfillmentType: fulfillmentOf(mode.value),
+      addressId: mode.value === "DELIVERY" ? address.picked?.addressId : undefined,
       remark: remark.value.trim(),
       contactPhone: mode.value === "DELIVERY" ? (address.picked?.contactPhone ?? contactPhone.value) : contactPhone.value,
       couponId,
@@ -605,9 +608,10 @@ async function submit(): Promise<void> {
         contactName: name,
         contactPhone: phone,
         fulfillmentType: fulfillmentOf(mode.value),
+        addressId: mode.value === "DELIVERY" ? address.picked?.addressId : undefined,
         couponId: couponStore.selectedId === "" ? null : couponStore.selectedId,
       },
-      createClientOrderNo(tokenStore.profile?.userId ?? "guest"),
+      clientOrderNo,
     );
     orderStore.upsertActive({
       orderNo: result.orderNo,

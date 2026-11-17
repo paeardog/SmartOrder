@@ -41,6 +41,8 @@ const config: RequestDefaults = {
   refresh: null,
 };
 
+let pendingRefresh: Promise<boolean> | null = null;
+
 export function configureRequest(next: Partial<RequestDefaults>): void {
   Object.assign(config, next);
 }
@@ -147,8 +149,20 @@ export async function request<T>(
     );
     if (error.unauthorized) {
       const canRetry = !retried && options.withToken !== false && config.refresh !== null;
-      if (canRetry && (await config.refresh?.())) {
-        return request<T>(method, path, options, true);
+      if (canRetry) {
+        const currentToken = config.token();
+        if (token && currentToken && token !== currentToken) {
+          return request<T>(method, path, options, true);
+        }
+        pendingRefresh ??= Promise.resolve()
+          .then(() => config.refresh?.() ?? false)
+          .catch(() => false)
+          .finally(() => {
+            pendingRefresh = null;
+          });
+        if (await pendingRefresh) {
+          return request<T>(method, path, options, true);
+        }
       }
       config.onUnauthorized(error);
     }

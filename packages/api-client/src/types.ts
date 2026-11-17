@@ -86,6 +86,48 @@ export interface UserProfile {
   orderCount: number;
 }
 
+export interface RiderProfile {
+  riderId: Id;
+  realName: string;
+  phone: string;
+  campusArea: string;
+  dormBuilding: string;
+  status: 1 | 2;
+  deliveryCount: number;
+  incomeAmount: number;
+  ratingScore: number;
+  todayCount: number;
+  todayIncome: number;
+}
+
+export interface RiderSession extends Session {
+  rider: RiderProfile;
+}
+
+export type DeliveryTaskScope = "POOL" | "ACTIVE" | "HISTORY";
+export type DeliveryTaskStatus = "WAITING" | "ACCEPTED" | "PICKED" | "DELIVERED" | "FAILED";
+
+export interface DeliveryTask {
+  deliveryId: Id;
+  orderNo: string;
+  status: DeliveryTaskStatus;
+  merchantName: string;
+  pickupPointName: string;
+  targetBuilding: string;
+  dormAddress: string;
+  contactName: string;
+  contactPhone: string;
+  pickupCode: string | null;
+  remark: string;
+  itemCount: number;
+  riderIncome: number;
+  createdAt: IsoDateTime;
+  acceptedAt: IsoDateTime | null;
+  pickedAt: IsoDateTime | null;
+  deliveredAt: IsoDateTime | null;
+  items: { dishName: string; optionText: string; quantity: number }[];
+}
+
 export interface CasRedirect {
   redirectUrl: string;
 }
@@ -128,7 +170,7 @@ export interface MenuOption {
   name: string;
   priceDelta: number;
   isDefault: boolean;
-  stock: number | null;
+  stock?: number | null;
   soldOut: boolean;
 }
 
@@ -273,6 +315,7 @@ export interface PreflightRequest {
   remark?: string;
   contactPhone?: string;
   fulfillmentType: FulfillmentType;
+  addressId?: Id;
   couponId?: Id | null;
 }
 
@@ -314,6 +357,7 @@ export interface CreateOrderRequest {
   contactName?: string;
   contactPhone?: string;
   fulfillmentType: FulfillmentType;
+  addressId?: Id;
   couponId?: Id | null;
 }
 

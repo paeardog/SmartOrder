@@ -5,7 +5,7 @@
 ## 结构
 
 ```
-db/                 数据库真源。schema.sql（31 张表建库脚本）、seed.sql（示例数据）、
+db/                 数据库真源。schema.sql（34 张表建库脚本）、seed.sql（示例数据）、
                     tests/（19 个约束与索引行为测试，跑在真实 MySQL 上）
 scripts/            Node 脚本：check-schema.mjs 静态校验、run-db-tests.mjs 行为测试、
                     gen-flyway.mjs 由 schema.sql 生成 Flyway 基线

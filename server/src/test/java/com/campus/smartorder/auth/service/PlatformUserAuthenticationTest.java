@@ -107,7 +107,7 @@ class PlatformUserAuthenticationTest {
     }
 
     @ParameterizedTest
-    @ValueSource(strings = {"/api/v1/auth/password/login", "/api/v1/auth/refresh"})
+    @ValueSource(strings = {"/api/v1/auth/rider/login", "/api/v1/auth/password/login", "/api/v1/auth/refresh"})
     void retainsExistingPublicAuthenticationRoutes(String path) throws Exception {
         MockHttpServletRequest request = new MockHttpServletRequest("POST", path);
         MockHttpServletResponse response = new MockHttpServletResponse();

@@ -40,8 +40,10 @@ import com.campus.smartorder.system.domain.SysConfig;
 import com.campus.smartorder.system.mapper.SysConfigMapper;
 import com.campus.smartorder.user.domain.PickupPoint;
 import com.campus.smartorder.user.domain.User;
+import com.campus.smartorder.user.domain.UserAddress;
 import com.campus.smartorder.user.mapper.PickupPointMapper;
 import com.campus.smartorder.user.mapper.UserMapper;
+import com.campus.smartorder.user.service.AddressService;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -68,7 +70,7 @@ public class OrderService {
 
     public record Draft(Long merchantId, List<CartService.ResolvedLine> items, List<Long> cartItemIds,
                         String remark, String contactName, String contactPhone,
-                        FulfillmentType fulfillmentType, Long couponId, String clientOrderNo) {
+                        FulfillmentType fulfillmentType, Long addressId, Long couponId, String clientOrderNo) {
     }
 
     private final OrderMapper orderMapper;
@@ -86,6 +88,7 @@ public class OrderService {
     private final PricingService pricingService;
     private final MarketingService marketingService;
     private final OpenStateService openStateService;
+    private final AddressService addressService;
     private final SysConfigMapper sysConfigMapper;
     private final SmartOrderProperties properties;
 
@@ -95,7 +98,8 @@ public class OrderService {
                         DishMapper dishMapper, MenuCategoryMapper categoryMapper, DishStockMapper stockMapper,
                         PickupPointMapper pickupPointMapper, UserMapper userMapper, PricingService pricingService,
                         MarketingService marketingService, OpenStateService openStateService,
-                        SysConfigMapper sysConfigMapper, SmartOrderProperties properties) {
+                        AddressService addressService, SysConfigMapper sysConfigMapper,
+                        SmartOrderProperties properties) {
         this.orderMapper = orderMapper;
         this.orderItemMapper = orderItemMapper;
         this.statusLogMapper = statusLogMapper;
@@ -111,12 +115,14 @@ public class OrderService {
         this.pricingService = pricingService;
         this.marketingService = marketingService;
         this.openStateService = openStateService;
+        this.addressService = addressService;
         this.sysConfigMapper = sysConfigMapper;
         this.properties = properties;
     }
 
     public OrderDto.Preflight preflight(Long userId, Draft draft) {
         Merchant merchant = requireMerchant(draft.merchantId());
+        deliveryContact(userId, draft, merchant);
         LocalDateTime now = openStateService.now();
         OpenStateService.State state = openStateService.statesOf(List.of(merchant.getId()), now).get(merchant.getId());
         if (state == null || !state.open() || !merchant.orderable()) {
@@ -155,6 +161,7 @@ public class OrderService {
         if (!merchant.orderable()) {
             throw new BizException(ErrorCode.MERCHANT_CLOSED);
         }
+        DeliveryContact delivery = deliveryContact(userId, draft, merchant);
 
         LocalDateTime now = openStateService.now();
         Pricing priced = price(userId, draft, merchant, deliveryFeeOf(draft.fulfillmentType()), now);
@@ -187,8 +194,11 @@ public class OrderService {
         order.setExpireAt(check.expireAt());
         order.setMerchantNameSnapshot(merchant.getName());
         order.setPickupPointNameSnapshot(pointName(merchant.getPickupPointId()));
-        order.setContactName(firstNonBlank(draft.contactName(), user.getRealName()));
-        order.setContactPhone(firstNonBlank(draft.contactPhone(), user.getPhone()));
+        order.setContactName(delivery == null ? firstNonBlank(draft.contactName(), user.getRealName()) : delivery.name());
+        order.setContactPhone(delivery == null ? firstNonBlank(draft.contactPhone(), user.getPhone()) : delivery.phone());
+        if (delivery != null) {
+            order.setDormAddress(delivery.address());
+        }
         order.setRemark(Ids.blank(draft.remark()));
         order.setItemCount(priced.lines().stream().mapToInt(Resolved::quantity).sum());
         order.setVersion(1);
@@ -334,6 +344,30 @@ public class OrderService {
             throw new BizException(ErrorCode.MERCHANT_NOT_FOUND);
         }
         return merchant;
+    }
+
+    private record DeliveryContact(String name, String phone, String address) {
+    }
+
+    private DeliveryContact deliveryContact(Long userId, Draft draft, Merchant merchant) {
+        if (draft.fulfillmentType() != FulfillmentType.DELIVERY) {
+            return null;
+        }
+        UserAddress address = addressService.requireDeliveryAddress(userId, draft.addressId(), merchant.getPickupPointId());
+        String campusArea = Ids.blank(address.getCampusArea()).trim();
+        String building = Ids.blank(address.getBuilding()).trim();
+        String roomNo = Ids.blank(address.getRoomNo()).trim();
+        String name = Ids.blank(address.getContactName()).trim();
+        String phone = Ids.blank(address.getContactPhone()).trim();
+        if (campusArea.isEmpty() || building.isEmpty() || roomNo.isEmpty() || name.isEmpty() || phone.isEmpty()) {
+            throw BizException.of(ErrorCode.INVALID_PARAM, "配送地址不完整，请先完善地址");
+        }
+        String snapshot = campusArea.replaceAll("\\s+", " ") + " " + building.replaceAll("\\s+", " ")
+                + "\n" + roomNo.replaceAll("\\s+", " ");
+        if (snapshot.length() > 255) {
+            throw BizException.of(ErrorCode.INVALID_PARAM, "配送地址不能超过 255 个字");
+        }
+        return new DeliveryContact(name, phone, snapshot);
     }
 
     private record Resolved(Long dishId, String dishName, String dishImage, String categoryName, String optionText,

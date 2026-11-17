@@ -11,7 +11,7 @@
 
       <div class="login-hero__content">
         <h1>欢迎回来</h1>
-        <p>登录后开启今日份好胃口</p>
+        <p>{{ entryRole === 'rider' ? '配送工作台，连接档口与寝室' : '登录后开启今日份好胃口' }}</p>
       </div>
 
       <svg class="login-hero__illustration" viewBox="0 0 180 150" fill="none" aria-hidden="true">
@@ -30,6 +30,10 @@
 
     <div class="login-content">
       <section class="login-card so-card">
+        <div class="login-entries" aria-label="登录身份">
+          <button type="button" :class="{ 'is-active': entryRole === 'student' }" :disabled="submitting" @click="switchEntry('student')">学生点单</button>
+          <button type="button" :class="{ 'is-active': entryRole === 'rider' }" :disabled="submitting" @click="switchEntry('rider')">配送员登录</button>
+        </div>
         <van-field
           v-model="studentNo"
           :label="mode === 'login' ? '账号' : '学号'"
@@ -68,7 +72,8 @@
           </van-button>
         </div>
 
-        <button class="login-switch" type="button" @click="toggleMode">
+        <p v-if="loginError" class="login-error" role="alert">{{ loginError }}</p>
+        <button v-if="entryRole === 'student'" class="login-switch" type="button" :disabled="submitting" @click="toggleMode">
           {{ mode === "login" ? "还没有账号？用学号注册" : "已有账号？返回登录" }}
         </button>
       </section>
@@ -82,16 +87,28 @@
 </template>
 
 <script setup lang="ts">
-import { computed, ref } from "vue";
+import { computed, onBeforeUnmount, ref, watch } from "vue";
 import { useRouter, useRoute } from "vue-router";
 import { auth as authApi } from "@smartorder/api-client";
-import { setProfile, setTokens } from "../stores/session";
+import { setProfile, setTokens, type SessionRole } from "../stores/session";
 import { reportError } from "../utils/report";
+import { riderErrorText, riderNext } from "../utils/rider";
 
 const router = useRouter();
 const route = useRoute();
 
+const entryRole = ref<SessionRole>("student");
 const mode = ref<"login" | "register">("login");
+const loginError = ref("");
+let alive = true;
+
+watch(() => [route.query["mode"], route.query["next"]], () => {
+  entryRole.value = route.query["mode"] === "rider" || (typeof route.query["next"] === "string" && route.query["next"].startsWith("/rider")) ? "rider" : "student";
+  mode.value = "login";
+  loginError.value = "";
+}, { immediate: true });
+
+onBeforeUnmount(() => { alive = false; });
 const studentNo = ref("");
 const password = ref("");
 const nickname = ref("");
@@ -108,32 +125,52 @@ const canSubmit = computed(() => {
 });
 
 const hint = computed(() =>
-  mode.value === "register"
+  entryRole.value === "rider"
+    ? "仅限已有审核配送资格的学生账号，不支持配送员自注册"
+    : mode.value === "register"
     ? "学号 8-12 位，密码至少 6 位"
     : isDev
       ? "种子账号初始密码为学号后 6 位 · 演示账号 admin / admin"
       : "种子账号初始密码为学号后 6 位",
 );
 
+function switchEntry(role: SessionRole): void {
+  if (submitting.value) return;
+  entryRole.value = role;
+  mode.value = "login";
+  loginError.value = "";
+}
+
 function toggleMode(): void {
+  if (submitting.value || entryRole.value === "rider") return;
   mode.value = mode.value === "login" ? "register" : "login";
+  loginError.value = "";
 }
 
 async function submit(): Promise<void> {
-  if (!canSubmit.value) {
+  if (!canSubmit.value || submitting.value) {
     return;
   }
   submitting.value = true;
+  loginError.value = "";
+  const role = entryRole.value;
   try {
-    const session =
-      mode.value === "login"
+    const session = role === "rider"
+      ? await authApi.riderLogin(studentNo.value.trim(), password.value)
+      : mode.value === "login"
         ? await authApi.passwordLogin(studentNo.value, password.value)
         : await authApi.register(studentNo.value, password.value, nickname.value.trim() || undefined);
-    setTokens(session.accessToken, session.refreshToken);
+    if (!alive) return;
+    if (role === "rider" && (!("rider" in session) || !session.rider)) {
+      throw new Error("配送资格校验未完成，请重新登录");
+    }
+    setTokens(session.accessToken, session.refreshToken, role);
     setProfile(session.user);
     const next = typeof route.query["next"] === "string" ? route.query["next"] : "/";
-    void router.replace(next);
+    await router.replace(role === "rider" ? riderNext(next) : next.startsWith("/") && !next.startsWith("//") && !next.startsWith("/rider") ? next : "/");
   } catch (error) {
+    if (!alive) return;
+    loginError.value = riderErrorText(error);
     reportError(error);
   } finally {
     submitting.value = false;
@@ -251,6 +288,37 @@ async function submit(): Promise<void> {
 
 .login-card {
   padding: 0.6rem 1.1rem 1.25rem;
+}
+
+.login-entries {
+  display: flex;
+  gap: 0.4rem;
+  padding: 0.3rem;
+  margin: 0.35rem 0 0.6rem;
+  background: var(--btn-regular-bg);
+  border-radius: 12px;
+}
+
+.login-entries button {
+  flex: 1;
+  padding: 0.6rem 0;
+  border: 0;
+  border-radius: 9px;
+  background: transparent;
+  color: var(--content-meta);
+  font-size: 0.82rem;
+}
+
+.login-entries button.is-active {
+  background: var(--primary-soft);
+  color: var(--primary);
+  font-weight: var(--font-weight-semibold);
+}
+
+.login-error {
+  margin-top: 0.8rem;
+  color: var(--caution);
+  font-size: 0.76rem;
 }
 
 .login-field {

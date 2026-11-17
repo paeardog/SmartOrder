@@ -7,6 +7,8 @@ import { reportError, textOf } from "../utils/report";
 
 const route = useRoute();
 const router = useRouter();
+// TODO(上线前) 移除演示提示
+const demoHint = import.meta.env.DEV ? "种子账号初始密码为学号后 6 位 · 演示账号 admin / admin" : "";
 
 const mode = ref<"login" | "register">("login");
 const studentNo = ref("");
@@ -120,7 +122,7 @@ async function submit(): Promise<void> {
         </button>
       </form>
 
-      <p class="so-hint" style="margin-top: 1rem">种子账号初始密码为学号后 6 位 · 演示账号 admin / admin</p>
+      <p v-if="demoHint" class="so-hint" style="margin-top: 1rem">{{ demoHint }}</p>
     </section>
   </div>
 </template>
