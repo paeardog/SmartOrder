@@ -34,9 +34,11 @@ button {
   width: 228px;
   background: var(--card-bg);
   border-right: 1px solid var(--line-divider);
+  box-shadow: 1px 0 0 var(--edge-shadow);
   display: flex;
   flex-direction: column;
   flex-shrink: 0;
+  z-index: 6;
 }
 
 .so-sidebar__header {
@@ -87,6 +89,20 @@ button {
   text-align: left;
   font-size: 0.92rem;
   text-decoration: none;
+  position: relative;
+}
+
+.so-nav-item::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 50%;
+  height: 60%;
+  width: 3px;
+  border-radius: 0 3px 3px 0;
+  background: var(--primary);
+  transform: scaleY(0);
+  transition: transform var(--duration-fast) var(--ease-standard);
 }
 
 .so-nav-item:hover {
@@ -98,6 +114,10 @@ button {
   background: var(--btn-regular-bg);
   color: var(--primary);
   font-weight: var(--font-weight-medium);
+}
+
+.so-nav-item--active::before {
+  transform: scaleY(1);
 }
 
 .so-nav-item__icon {
@@ -158,6 +178,7 @@ button {
   z-index: 5;
   background: var(--card-bg);
   border-bottom: 1px solid var(--line-divider);
+  box-shadow: var(--edge-shadow);
   padding: 0.85rem 2rem;
   display: flex;
   align-items: center;
@@ -213,6 +234,7 @@ button {
   background: var(--card-bg);
   border-radius: var(--card-radius);
   border: 1px solid var(--line-divider);
+  box-shadow: var(--elev-1);
   padding: 1.25rem;
 }
 
@@ -275,6 +297,13 @@ button {
   border: 1px solid var(--line-divider);
   border-radius: var(--card-radius);
   padding: 1rem 1.1rem;
+  box-shadow: var(--elev-1);
+  transition: box-shadow var(--duration-normal) var(--ease-standard), transform var(--duration-normal) var(--ease-standard);
+}
+
+.so-metric:hover {
+  box-shadow: var(--elev-2);
+  transform: translateY(-2px);
 }
 
 .so-metric__label {
@@ -316,6 +345,15 @@ button {
   white-space: nowrap;
 }
 
+.so-btn:not(:disabled):active {
+  transform: var(--press-shift);
+}
+
+.so-btn:focus-visible {
+  outline: none;
+  box-shadow: var(--focus-ring);
+}
+
 .so-btn:disabled {
   opacity: 0.5;
   cursor: not-allowed;
@@ -328,6 +366,7 @@ button {
 
 .so-btn--primary:not(:disabled):hover {
   background: oklch(0.65 0.16 var(--hue));
+  box-shadow: var(--elev-2);
 }
 
 .so-btn--ok {
@@ -449,7 +488,7 @@ button {
   background: var(--card-bg);
   color: var(--primary);
   font-weight: var(--font-weight-medium);
-  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.06);
+  box-shadow: var(--elev-1);
 }
 
 .so-segment__num {
@@ -468,6 +507,7 @@ button {
   color: var(--deep-text);
   font-size: 0.88rem;
   font-family: inherit;
+  transition: border-color var(--duration-fast) var(--ease-standard), box-shadow var(--duration-fast) var(--ease-standard);
 }
 
 .so-input:focus,
@@ -475,6 +515,7 @@ button {
 .so-textarea:focus {
   outline: none;
   border-color: var(--primary);
+  box-shadow: var(--focus-ring);
 }
 
 .so-input--num {
@@ -609,6 +650,7 @@ button {
   background: var(--card-bg);
   border: 1px solid var(--line-divider);
   border-radius: var(--card-radius);
+  box-shadow: var(--elev-1);
   display: flex;
   flex-direction: column;
   min-height: 200px;
@@ -644,6 +686,13 @@ button {
   border-radius: var(--control-radius);
   padding: 0.75rem;
   background: var(--btn-plain-bg-active);
+  box-shadow: var(--elev-1);
+  transition: box-shadow var(--duration-normal) var(--ease-standard), transform var(--duration-normal) var(--ease-standard), border-color var(--duration-fast) var(--ease-standard);
+}
+
+.so-order:hover {
+  box-shadow: var(--elev-2);
+  transform: translateY(-2px);
 }
 
 .so-order--urgent {
@@ -736,7 +785,7 @@ button {
   border-radius: var(--card-radius);
   width: 100%;
   max-width: 560px;
-  box-shadow: 0 16px 48px rgba(0, 0, 0, 0.18);
+  box-shadow: var(--elev-4);
 }
 
 .so-modal--wide {
@@ -792,7 +841,7 @@ button {
   border-radius: var(--control-radius);
   padding: 0.6rem 0.9rem;
   font-size: 0.85rem;
-  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.12);
+  box-shadow: var(--elev-3);
   max-width: 360px;
   display: flex;
   align-items: center;
@@ -826,6 +875,7 @@ button {
   background: var(--btn-regular-bg);
   border-radius: 3px;
   overflow: hidden;
+  box-shadow: inset 0 1px 2px rgba(15, 18, 22, 0.08);
 }
 
 .so-meter__fill {

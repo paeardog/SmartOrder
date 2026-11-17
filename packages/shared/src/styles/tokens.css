@@ -69,6 +69,15 @@
   --duration-medium: 0.3s;
   --duration-slow: 0.4s;
 
+  --elev-1: 0 1px 2px rgba(15, 18, 22, 0.04), 0 1px 3px rgba(15, 18, 22, 0.06);
+  --elev-2: 0 2px 6px rgba(15, 18, 22, 0.06), 0 8px 18px rgba(15, 18, 22, 0.07);
+  --elev-3: 0 6px 16px rgba(15, 18, 22, 0.1), 0 16px 40px rgba(15, 18, 22, 0.12);
+  --elev-4: 0 24px 64px rgba(15, 18, 22, 0.22);
+  --elev-up: 0 -6px 24px rgba(15, 18, 22, 0.07);
+  --edge-shadow: 0 1px 0 rgba(15, 18, 22, 0.03);
+  --focus-ring: 0 0 0 3px oklch(0.7 0.14 var(--hue) / 0.35);
+  --press-shift: translateY(1px);
+
   --font-sans: "Roboto", "sans-serif", ui-sans-serif, system-ui, sans-serif,
     "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol", "Noto Color Emoji";
   --font-mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas,
@@ -130,6 +139,14 @@
   --caution-soft: oklch(0.28 0.05 25);
   --muted: oklch(0.55 0.02 var(--hue));
   --muted-soft: oklch(0.3 0.015 var(--hue));
+
+  --elev-1: 0 1px 2px rgba(0, 0, 0, 0.4), 0 1px 3px rgba(0, 0, 0, 0.3);
+  --elev-2: 0 2px 6px rgba(0, 0, 0, 0.45), 0 8px 18px rgba(0, 0, 0, 0.35);
+  --elev-3: 0 6px 16px rgba(0, 0, 0, 0.5), 0 16px 40px rgba(0, 0, 0, 0.4);
+  --elev-4: 0 24px 64px rgba(0, 0, 0, 0.6);
+  --elev-up: 0 -6px 24px rgba(0, 0, 0, 0.45);
+  --edge-shadow: 0 1px 0 rgba(0, 0, 0, 0.35);
+  --focus-ring: 0 0 0 3px oklch(0.75 0.14 var(--hue) / 0.45);
 
   color-scheme: dark;
 }
