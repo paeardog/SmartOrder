@@ -16,20 +16,25 @@ set "PROBE_FILE=%TEMP%\smartorder-probe.txt"
 set "APP_LOG=%TOOLS%\backend.log"
 set "WEB_LOG=%TOOLS%\web.log"
 set "H5_LOG=%TOOLS%\h5.log"
+set "CONSOLE_LOG=%TOOLS%\console.log"
 set "DB_NAME=smartorder"
 set "DB_HOST=127.0.0.1"
 set "DB_USER=root"
 if not defined APP_PORT set "APP_PORT=8080"
 if not defined WEB_PORT set "WEB_PORT=5174"
 if not defined H5_PORT set "H5_PORT=5173"
+if not defined CONSOLE_PORT set "CONSOLE_PORT=5175"
 if not defined OPEN_WEB set "OPEN_WEB=1"
 if not defined OPEN_H5 set "OPEN_H5=1"
+if not defined OPEN_CONSOLE set "OPEN_CONSOLE=1"
 if not defined START_WEB set "START_WEB=1"
 if not defined START_H5 set "START_H5=1"
+if not defined START_CONSOLE set "START_CONSOLE=1"
 if not defined AUTO_INSTALL set "AUTO_INSTALL=1"
 if not defined BACKEND_WAIT set "BACKEND_WAIT=300"
 if not defined WEB_WAIT set "WEB_WAIT=120"
 if not defined H5_WAIT set "H5_WAIT=120"
+if not defined CONSOLE_WAIT set "CONSOLE_WAIT=120"
 if not defined MVN_VERSION set "MVN_VERSION=3.9.16"
 if not defined MYSQL_VERSION set "MYSQL_VERSION=8.0.40"
 if not defined NODE_VERSION set "NODE_VERSION=v22.20.0"
@@ -104,6 +109,8 @@ call :stop_service web %WEB_PORT%
 if errorlevel 1 set "STOP_RC=1"
 call :stop_service h5 %H5_PORT%
 if errorlevel 1 set "STOP_RC=1"
+call :stop_service console %CONSOLE_PORT%
+if errorlevel 1 set "STOP_RC=1"
 call :stop_db
 if errorlevel 1 set "STOP_RC=1"
 if "%STOP_RC%"=="0" goto :bye_ok
@@ -139,15 +146,16 @@ if errorlevel 1 goto :bye_fail
 set "BACKEND_STARTED=0"
 set "WEB_STARTED=0"
 set "H5_STARTED=0"
+set "CONSOLE_STARTED=0"
 set "BACKEND_UP=0"
 set "WEB_UP=0"
 set "H5_UP=0"
+set "CONSOLE_UP=0"
+call :resolve_lan_ip
 echo.
-echo Starting backend, web and h5 dev servers, then opening browsers.
-echo logs      %APP_LOG%  %WEB_LOG%  %H5_LOG%
-echo health    http://localhost:%APP_PORT%/api/v1/system/health
-echo web       http://127.0.0.1:%WEB_PORT%
-echo h5        http://127.0.0.1:%H5_PORT%
+echo Starting backend, web, h5 and console dev servers, then opening the pages.
+echo logs      %APP_LOG%  %WEB_LOG%  %H5_LOG%  %CONSOLE_LOG%
+call :print_access
 echo.
 
 call :port_listening %APP_PORT%
@@ -223,26 +231,66 @@ start "" /B cmd /c "call pnpm dev:h5 > .tools\h5.log 2>&1"
 call :wait_for_port %H5_PORT% %H5_WAIT% "%H5_LOG%"
 if "%WAIT_RESULT%"=="up" goto :open_h5
 call :report_stopped h5 "%H5_LOG%" %H5_PORT% %H5_WAIT%
-goto :summary
+goto :start_console
 
 :open_h5
 set "H5_UP=1"
 call :green_echo H5 启动成功！
-if not "%OPEN_H5%"=="1" goto :summary
+if not "%OPEN_H5%"=="1" goto :start_console
 echo h5        opening http://127.0.0.1:%H5_PORT% in the browser
 start "" "http://127.0.0.1:%H5_PORT%"
-goto :summary
+goto :start_console
 
 :h5_disabled
 echo h5        START_H5=%START_H5%, dev server and browser skipped
-goto :summary
+goto :start_console
 
 :h5_missing
 echo h5        skipped, folder apps\h5 was not found
-goto :summary
+goto :start_console
 
 :h5_failed
 echo h5        skipped, the tools it needs are not ready
+goto :start_console
+
+:start_console
+if not "%START_CONSOLE%"=="1" goto :console_disabled
+if not exist "%ROOT%\apps\console" goto :console_missing
+call :resolve_node
+if errorlevel 1 goto :console_failed
+call :resolve_pnpm
+if errorlevel 1 goto :console_failed
+call :ensure_deps
+if errorlevel 1 goto :console_failed
+call :port_listening %CONSOLE_PORT%
+if "%PORT_UP%"=="1" goto :open_console
+set "CONSOLE_STARTED=1"
+del "%CONSOLE_LOG%" >nul 2>&1
+echo console   pnpm dev:console on apps\console, port %CONSOLE_PORT% ...
+start "" /B cmd /c "call pnpm dev:console > .tools\console.log 2>&1"
+call :wait_for_port %CONSOLE_PORT% %CONSOLE_WAIT% "%CONSOLE_LOG%"
+if "%WAIT_RESULT%"=="up" goto :open_console
+call :report_stopped console "%CONSOLE_LOG%" %CONSOLE_PORT% %CONSOLE_WAIT%
+goto :summary
+
+:open_console
+set "CONSOLE_UP=1"
+call :green_echo 商家端启动成功！
+if not "%OPEN_CONSOLE%"=="1" goto :summary
+echo console   opening http://127.0.0.1:%CONSOLE_PORT% in the browser
+start "" "http://127.0.0.1:%CONSOLE_PORT%"
+goto :summary
+
+:console_disabled
+echo console   START_CONSOLE=%START_CONSOLE%, dev server and browser skipped
+goto :summary
+
+:console_missing
+echo console   skipped, folder apps\console was not found
+goto :summary
+
+:console_failed
+echo console   skipped, the tools it needs are not ready
 goto :summary
 
 :summary
@@ -254,7 +302,9 @@ if "%WEB_UP%"=="1" echo web       running, http://127.0.0.1:%WEB_PORT%
 if "%WEB_UP%"=="0" if "%WEB_STARTED%"=="0" if not "%START_WEB%"=="1" echo web       skipped by START_WEB
 if "%H5_UP%"=="1" echo h5        running, http://127.0.0.1:%H5_PORT%
 if "%H5_UP%"=="0" if "%H5_STARTED%"=="0" if not "%START_H5%"=="1" echo h5        skipped by START_H5
-if "%BACKEND_UP%"=="1" if "%WEB_UP%"=="1" if "%H5_UP%"=="1" call :green_echo 启动成功！后端、Web 和 H5 均已启动。
+if "%CONSOLE_UP%"=="1" echo console   running, http://127.0.0.1:%CONSOLE_PORT%
+if "%CONSOLE_UP%"=="0" if "%CONSOLE_STARTED%"=="0" if not "%START_CONSOLE%"=="1" echo console   skipped by START_CONSOLE
+if "%BACKEND_UP%"=="1" if "%WEB_UP%"=="1" if "%H5_UP%"=="1" if "%CONSOLE_UP%"=="1" call :green_echo 启动成功！后端、Web、H5 和商家端均已启动。
 echo db        %DB_HOST%:%DB_PORT%, data in %DATA_DIR%
 echo.
 echo Press a key to stop what this run started, mysqld keeps running.
@@ -265,10 +315,38 @@ call :stop_started
 if "%BACKEND_UP%"=="1" goto :bye_ok
 if "%WEB_UP%"=="1" goto :bye_ok
 if "%H5_UP%"=="1" goto :bye_ok
+if "%CONSOLE_UP%"=="1" goto :bye_ok
 goto :bye_fail
 
 :green_echo
 "%POWERSHELL%" -NoProfile -NonInteractive -Command "Write-Host '%*' -ForegroundColor Green"
+exit /b 0
+
+:resolve_lan_ip
+set "LAN_IP="
+set "LAN_IP_FILE=%TEMP%\smartorder-lan.txt"
+del "%LAN_IP_FILE%" >nul 2>nul
+"%POWERSHELL%" -NoProfile -NonInteractive -Command "Get-NetRoute -DestinationPrefix '0.0.0.0/0' -ErrorAction SilentlyContinue | Sort-Object { $_.RouteMetric + $_.InterfaceMetric } | Select-Object -First 1 | ForEach-Object { Get-NetIPAddress -AddressFamily IPv4 -InterfaceIndex $_.ifIndex -ErrorAction SilentlyContinue | Select-Object -First 1 -ExpandProperty IPAddress }" > "%LAN_IP_FILE%" 2>nul
+if exist "%LAN_IP_FILE%" set /p LAN_IP=<"%LAN_IP_FILE%"
+del "%LAN_IP_FILE%" >nul 2>nul
+if not defined LAN_IP for /f "tokens=2 delims=:" %%I in ('ipconfig ^| findstr /c:"IPv4"') do if not defined LAN_IP set "LAN_IP=%%I"
+if defined LAN_IP for /f "tokens=* delims= " %%I in ("%LAN_IP%") do set "LAN_IP=%%I"
+exit /b 0
+
+:print_access
+echo.
+echo ---------------- access ----------------
+echo health    http://localhost:%APP_PORT%/api/v1/system/health
+echo local     web     http://127.0.0.1:%WEB_PORT%
+echo           h5      http://127.0.0.1:%H5_PORT%
+echo           console http://127.0.0.1:%CONSOLE_PORT%
+if defined LAN_IP echo lan       web     http://%LAN_IP%:%WEB_PORT%
+if defined LAN_IP echo           h5      http://%LAN_IP%:%H5_PORT%
+if defined LAN_IP echo           console http://%LAN_IP%:%CONSOLE_PORT%
+if not defined LAN_IP echo lan       not detected, run ipconfig and use the IPv4 address
+echo note      the dev servers listen on 0.0.0.0, so other devices use the lan address;
+echo note      0.0.0.0 is the listen address, not an address to open from another machine.
+echo note      if a device cannot connect, allow these ports in Windows Firewall.
 exit /b 0
 
 :report_stopped
@@ -329,6 +407,7 @@ exit /b 0
 if "%BACKEND_STARTED%"=="1" call :stop_service app %APP_PORT%
 if "%WEB_STARTED%"=="1" call :stop_service web %WEB_PORT%
 if "%H5_STARTED%"=="1" call :stop_service h5 %H5_PORT%
+if "%CONSOLE_STARTED%"=="1" call :stop_service console %CONSOLE_PORT%
 exit /b 0
 
 :scan_java
@@ -828,12 +907,13 @@ exit /b 0
 echo SmartOrder bootstrap and launcher.
 echo.
 echo   start.bat            fetch whatever is missing, prepare the database and the
-echo                        data, run the backend, start the web dev server, open it
+echo                        data, run the backend, start the web, H5 and console dev
+echo                        servers, open the pages
 echo   start.bat db         only bring the database up and make sure it is populated
 echo   start.bat reset      drop every table, re-import schema.sql, seed.sql and the migrations
 echo   start.bat check      static check, flyway diff and the real MySQL test suite
 echo   start.bat build      prepare the database, then package the jar without running it
-echo   start.bat stop       stop backend, web, H5 and the portable mysqld
+echo   start.bat stop       stop backend, web, H5, console and the portable mysqld
 echo   start.bat help       this text
 echo.
 echo A machine with none of the tools downloads about 470 MB into .tools on the first
@@ -846,16 +926,19 @@ echo .tools\apache-maven-* then PATH for Maven; .tools\node-v* then PATH for Nod
 echo .tools\bin then PATH for pnpm; .tools\mysql-* then PATH for MySQL.
 echo .tools is gitignored, so nothing found there comes with the repository.
 echo.
-echo start runs apps\web and apps\h5, then opens both in the browser.
-echo Web: pnpm dev:web, H5: pnpm dev:h5.
-echo Set OPEN_WEB=0 or OPEN_H5=0 to keep the respective browser closed;
-echo START_WEB=0 or START_H5=0 skips the respective dev server.
-echo Ports default to WEB_PORT=5174 and H5_PORT=5173.
-echo Logs: .tools\backend.log, .tools\web.log and .tools\h5.log.
-echo BACKEND_WAIT, WEB_WAIT and H5_WAIT control startup timeouts in seconds.
+echo start runs apps\web, apps\h5 and apps\console, then opens all three.
+echo Web: pnpm dev:web, H5: pnpm dev:h5, console: pnpm dev:console.
+echo Set OPEN_WEB=0, OPEN_H5=0 or OPEN_CONSOLE=0 to keep a browser closed;
+echo START_WEB=0, START_H5=0 or START_CONSOLE=0 skips the respective dev server.
+echo Ports default to WEB_PORT=5174, H5_PORT=5173 and CONSOLE_PORT=5175.
+echo The three dev servers listen on 0.0.0.0. Each run prints the local 127.0.0.1
+echo addresses and this machine's LAN address for phones and other computers.
+echo Logs: .tools\backend.log, .tools\web.log, .tools\h5.log and .tools\console.log.
+echo BACKEND_WAIT, WEB_WAIT, H5_WAIT and CONSOLE_WAIT control startup timeouts in seconds.
 echo.
-echo Environment overrides: AUTO_INSTALL, BACKEND_WAIT, WEB_WAIT, H5_WAIT, DB_PORT, DB_USER,
-echo DB_PASS, SO_DB_URL, WEB_PORT, H5_PORT, OPEN_WEB, OPEN_H5, START_WEB, START_H5,
+echo Environment overrides: AUTO_INSTALL, BACKEND_WAIT, WEB_WAIT, H5_WAIT, CONSOLE_WAIT,
+echo DB_PORT, DB_USER, DB_PASS, SO_DB_URL, WEB_PORT, H5_PORT, CONSOLE_PORT,
+echo OPEN_WEB, OPEN_H5, OPEN_CONSOLE, START_WEB, START_H5, START_CONSOLE,
 echo MVN_VERSION, MYSQL_VERSION,
 echo NODE_VERSION, PNPM_VERSION.
 goto :eof
