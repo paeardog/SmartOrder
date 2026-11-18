@@ -161,7 +161,7 @@ const notes = useNotesStore();
 const selection = ref<SkuSelection>({});
 const quantity = ref(1);
 const note = ref("");
-const touched = ref(false);
+const baseline = ref({ hash: "", quantity: 1, note: "" });
 
 const quickNotes = ["少辣", "不要葱", "多加醋", "打包分开装"];
 
@@ -172,6 +172,12 @@ const currentHash = computed(() => hashOfEntries(entries.value));
 const blocked = computed(() => (props.dish ? blockedGroups(props.dish) : []));
 const editing = computed(() => props.editing ?? null);
 const notePlaceholder = computed(() => `${props.merchantName ?? "本单"}·${props.dish?.name ?? ""}的特殊要求，将同步给商家`);
+const dirty = computed(
+  () =>
+    currentHash.value !== baseline.value.hash ||
+    quantity.value !== baseline.value.quantity ||
+    note.value !== baseline.value.note,
+);
 
 const remaining = computed(() => {
   if (!props.dish) {
@@ -231,7 +237,6 @@ watch(
     if (!props.show || !props.dish) {
       return;
     }
-    touched.value = false;
     if (editing.value) {
       selection.value = selectionFromEntries(props.dish, editing.value.entries);
       quantity.value = Math.max(1, Math.min(editing.value.quantity, maxQuantity.value));
@@ -241,6 +246,7 @@ watch(
       quantity.value = Math.max(1, props.dish.minBuyCount);
       note.value = "";
     }
+    baseline.value = { hash: currentHash.value, quantity: quantity.value, note: note.value };
   },
   { immediate: true },
 );
@@ -309,9 +315,8 @@ function close(value: boolean): void {
   emit("update:show", value);
 }
 
-async function beforeClose(done: () => void): Promise<boolean> {
-  if (!touched.value) {
-    done();
+async function beforeClose(): Promise<boolean> {
+  if (!dirty.value) {
     return true;
   }
   try {
@@ -321,8 +326,6 @@ async function beforeClose(done: () => void): Promise<boolean> {
       confirmButtonText: "放弃修改",
       cancelButtonText: "继续选",
     });
-    touched.value = false;
-    done();
     return true;
   } catch {
     return false;
@@ -370,17 +373,12 @@ async function submit(): Promise<void> {
 }
 
 function done(): void {
-  touched.value = false;
   emit("update:show", false);
   emit("submitted", { dishId: props.dish?.dishId ?? "", quantity: quantity.value });
   if (props.origin) {
     flyToCart(props.origin, props.dish?.imageUrl ?? "");
   }
 }
-
-watch(selection, () => {
-  touched.value = true;
-});
 </script>
 
 <style scoped>

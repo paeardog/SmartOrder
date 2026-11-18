@@ -38,7 +38,9 @@ import SoStepper from "../components/SoStepper.vue";
 import StatusTag from "../components/StatusTag.vue";
 import { useCartStore } from "../stores/cart";
 import { useDiningStore } from "../stores/dining";
+import { useFavoritesStore } from "../stores/favorites";
 import { useNotesStore } from "../stores/notes";
+import { tokenStore } from "../stores/session";
 import { reportError, toastOk, toastText } from "../utils/report";
 
 const REFRESH_MS = 45000;
@@ -47,6 +49,7 @@ const route = useRoute();
 const router = useRouter();
 const cart = useCartStore();
 const dining = useDiningStore();
+const favorites = useFavoritesStore();
 const notes = useNotesStore();
 
 const merchantId = computed(() => String(route.params["id"] ?? ""));
@@ -370,6 +373,20 @@ function maxOf(dish: DishSummary): number {
   return Math.max(1, Math.min(dish.maxBuyPerOrder, stockLimit));
 }
 
+async function toggleDishFav(dish: DishSummary): Promise<void> {
+  const id = dish.dishId;
+  if (tokenStore.access === "") {
+    favorites.addPendingFavorite("DISH", id);
+    void router.push({ name: "login", query: { next: route.fullPath } });
+    return;
+  }
+  if (favorites.isDish(id)) {
+    await favorites.removeDish(id);
+  } else {
+    await favorites.addDish(id);
+  }
+}
+
 watch(merchantId, () => {
   menu.value = null;
   activeCategory.value = "";
@@ -404,6 +421,7 @@ watch(
 );
 
 onMounted(() => {
+  void favorites.ensureLoaded();
   const peek = cachePeek<MenuResponse>(`menu:${merchantId.value}`);
   if (peek !== null) {
     menu.value = peek;
@@ -451,8 +469,17 @@ onBeforeUnmount(() => {
             {{ formatYuan(merchant.minOrderAmount) }} · 出餐约 {{ minutesToText(merchant.avgPrepareMinutes) }}
           </p>
           <p class="so-merchant-hero__meta">
-            评分 {{ (merchant.ratingScore / 100).toFixed(1) }} · 月售 {{ soldText(merchant.monthSold) }} ·
-            {{ statusText() }}
+            <button
+              v-if="merchant"
+              type="button"
+              class="so-merchant-hero__rating"
+              @click="router.push({ name: 'merchant-reviews', params: { id: merchant.merchantId } })"
+            >
+              评分 {{ (merchant.ratingScore / 100).toFixed(1) }}
+              <template v-if="merchant.ratingCount > 0"> · {{ merchant.ratingCount }} 条评价</template>
+              <template v-else> · 暂无评价</template>
+            </button>
+            <span> · 月售 {{ soldText(merchant.monthSold) }} · {{ statusText() }}</span>
           </p>
         </div>
         <div class="so-merchant-hero__aside">
@@ -516,7 +543,18 @@ onBeforeUnmount(() => {
                 class="so-card so-dish"
                 :class="{ 'so-dish--off': dish.stock.soldOut, 'so-dish--highlight': highlight === dish.dishId }"
               >
-                <SoImage :src="dish.imageUrl" :alt="dish.name" img-class="so-dish__image" />
+                <div class="so-dish__thumb">
+                  <SoImage :src="dish.imageUrl" :alt="dish.name" img-class="so-dish__image" />
+                  <button
+                    type="button"
+                    class="so-dish__fav"
+                    :class="{ 'is-on': favorites.isDish(dish.dishId) }"
+                    aria-label="收藏菜品"
+                    @click.stop="toggleDishFav(dish)"
+                  >
+                    <AppIcon name="heart" :size="16" />
+                  </button>
+                </div>
                 <div class="so-dish__body">
                   <p class="so-dish__name">
                     {{ dish.name }}
@@ -668,3 +706,47 @@ onBeforeUnmount(() => {
     />
   </div>
 </template>
+
+<style scoped>
+.so-dish__thumb {
+  position: relative;
+  flex-shrink: 0;
+}
+
+.so-dish__fav {
+  position: absolute;
+  top: -0.35rem;
+  right: -0.35rem;
+  width: 1.6rem;
+  height: 1.6rem;
+  border-radius: 9999px;
+  background: rgba(255, 255, 255, 0.9);
+  border: none;
+  padding: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  color: #888;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.18);
+  transition: transform 0.12s ease, color 0.12s ease, background 0.12s ease;
+  z-index: 2;
+}
+
+.so-dish__fav:hover {
+  transform: scale(1.1);
+  background: #fff;
+}
+
+.so-dish__fav:active {
+  transform: scale(0.92);
+}
+
+.so-dish__fav.is-on {
+  color: #ef4444;
+}
+
+.so-dish__fav.is-on :deep(svg path) {
+  fill: currentColor !important;
+}
+</style>

@@ -5,6 +5,7 @@ const routes = [
   { path: "/", name: "home", component: () => import("./views/HomeView.vue"), meta: { title: "首页" } },
   { path: "/merchants", name: "merchants", component: () => import("./views/MerchantsView.vue"), meta: { title: "全部商户" } },
   { path: "/merchant/:id", name: "merchant", component: () => import("./views/MenuView.vue"), meta: { title: "档口" } },
+  { path: "/merchant/:id/reviews", name: "merchant-reviews", component: () => import("./views/MerchantReviewsView.vue"), props: true, meta: { title: "商家评价" } },
   { path: "/search", name: "search", component: () => import("./views/SearchView.vue"), meta: { title: "搜索" } },
   { path: "/cart", name: "cart", component: () => import("./views/CartView.vue"), meta: { title: "购物车" } },
   {

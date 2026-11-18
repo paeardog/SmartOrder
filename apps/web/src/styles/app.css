@@ -349,6 +349,23 @@ html, body {
   gap: 0.25rem;
 }
 
+.so-merchant-card__rating {
+  padding: 0;
+  color: var(--warn);
+  background: transparent;
+  border: 0;
+  font: inherit;
+  font-weight: var(--font-weight-semibold);
+  cursor: pointer;
+  text-decoration: underline dotted currentColor;
+  text-underline-offset: 2px;
+  transition: color var(--duration-fast) var(--ease-standard);
+}
+
+.so-merchant-card__rating:hover {
+  color: color-mix(in srgb, var(--warn) 80%, var(--deep-text));
+}
+
 .so-merchant-card__badge {
   position: absolute;
   top: 0.75rem;
@@ -884,6 +901,23 @@ html, body {
   font-size: 0.85rem;
   color: var(--content-meta);
   margin-top: 0.6rem;
+}
+
+.so-merchant-hero__rating {
+  padding: 0;
+  color: var(--warn);
+  background: transparent;
+  border: 0;
+  font: inherit;
+  font-weight: var(--font-weight-semibold);
+  cursor: pointer;
+  text-decoration: underline dotted currentColor;
+  text-underline-offset: 2px;
+  transition: color var(--duration-fast) var(--ease-standard);
+}
+
+.so-merchant-hero__rating:hover {
+  color: color-mix(in srgb, var(--warn) 80%, var(--deep-text));
 }
 
 .so-merchant-hero__aside {

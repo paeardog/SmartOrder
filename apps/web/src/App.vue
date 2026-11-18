@@ -6,6 +6,7 @@ import AppIcon from "./components/AppIcon.vue";
 import ToastHost from "./components/ToastHost.vue";
 import { useCartStore } from "./stores/cart";
 import { useCampusStore } from "./stores/campus";
+import { useFavoritesStore } from "./stores/favorites";
 import { useOrderStore } from "./stores/orders";
 import { tokenStore } from "./stores/session";
 import { lastKeyword } from "./utils/search";
@@ -14,6 +15,7 @@ const route = useRoute();
 const router = useRouter();
 const cart = useCartStore();
 const campus = useCampusStore();
+const favorites = useFavoritesStore();
 const orders = useOrderStore();
 
 const keyword = ref(lastKeyword());
@@ -79,6 +81,7 @@ watch([signedIn, streaming], () => {
   syncStream();
   void loadUnread();
   void syncCart();
+  void syncFavorites();
 });
 
 function syncCart(): void {
@@ -87,6 +90,14 @@ function syncCart(): void {
     return;
   }
   void cart.reload();
+}
+
+function syncFavorites(): void {
+  if (!signedIn.value) {
+    favorites.clear();
+    return;
+  }
+  void favorites.load();
 }
 
 watch(

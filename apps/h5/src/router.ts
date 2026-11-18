@@ -13,6 +13,13 @@ const routes: RouteRecordRaw[] = [
     meta: { title: "档口菜单" },
   },
   {
+    path: "/merchant/:id/reviews",
+    name: "merchant-reviews",
+    component: () => import("./views/MerchantReviewsView.vue"),
+    props: true,
+    meta: { title: "商家评价" },
+  },
+  {
     path: "/search",
     name: "search",
     component: () => import("./views/SearchView.vue"),

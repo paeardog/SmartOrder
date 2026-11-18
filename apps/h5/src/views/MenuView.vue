@@ -49,7 +49,16 @@
             <div class="menu-hero__name">{{ merchant.name }}</div>
             <div class="menu-hero__meta">
               <StatusTag :label="business.label" :tone="business.tone" dot />
-              <span class="menu-hero__rating"><van-icon name="star" />{{ ratingText }}</span>
+              <button
+                v-if="merchant"
+                type="button"
+                class="menu-hero__rating"
+                @click="router.push({ name: 'merchant-reviews', params: { id: merchant.merchantId } })"
+              >
+                <van-icon name="star" />{{ ratingText }}
+                <template v-if="merchant.ratingCount > 0"> · {{ merchant.ratingCount }} 条评价</template>
+                <template v-else> · 暂无评价</template>
+              </button>
               <span>月售 <b class="so-num">{{ soldText(merchant.monthSold) }}</b></span>
               <span class="menu-hero__category">{{ merchant.categoryName }}</span>
             </div>
@@ -816,9 +825,21 @@ onBeforeUnmount(() => {
   display: inline-flex;
   align-items: center;
   gap: 0.14rem;
+  padding: 0;
   color: #ffd79a;
+  background: transparent;
+  border: 0;
   font-family: var(--font-num);
+  font-size: inherit;
   font-weight: var(--font-weight-semibold);
+  cursor: pointer;
+  text-decoration: underline dotted rgba(255, 215, 154, 0.55);
+  text-underline-offset: 2px;
+  transition: color var(--duration-fast) var(--ease-standard);
+}
+
+.menu-hero__rating:active {
+  color: #ffe9c0;
 }
 
 .menu-hero__category {

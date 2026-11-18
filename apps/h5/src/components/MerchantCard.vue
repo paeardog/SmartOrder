@@ -9,7 +9,14 @@
       </div>
 
       <div class="mcard__stats">
-        <span class="mcard__rate so-num">★ {{ rating }}</span>
+        <button
+          type="button"
+          class="mcard__rate so-num"
+          @click.stop="router.push({ name: 'merchant-reviews', params: { id: merchant.merchantId } })"
+        >
+          ★ {{ rating }}
+          <template v-if="merchant.ratingCount > 0"> · {{ merchant.ratingCount }}</template>
+        </button>
         <span>{{ soldText(merchant.monthSold) }} 单</span>
         <span>{{ merchant.categoryName }}</span>
       </div>
@@ -27,16 +34,35 @@
       </div>
     </div>
 
+    <button
+      type="button"
+      class="mcard__fav"
+      :class="{ 'has-badge': badgeCount > 0, 'is-on': favorited }"
+      :aria-label="favorited ? '取消收藏' : '收藏'"
+      @click="toggleFav"
+    >
+      <van-icon :name="favorited ? 'heart' : 'heart-o'" />
+    </button>
     <span v-if="badgeCount > 0" class="mcard__badge so-num">{{ badgeCount }}</span>
   </router-link>
 </template>
 
 <script setup lang="ts">
 import { computed } from "vue";
+import { useRoute, useRouter } from "vue-router";
 import { businessOf, type MerchantSummary } from "@smartorder/api-client";
 import ArtImage from "./ArtImage.vue";
 import StatusTag from "./StatusTag.vue";
 import { hhmm, soldText, yuanText } from "../utils/format";
+import { useFavoritesStore } from "../stores/favorites";
+import { tokenStore } from "../stores/session";
+import { toastText } from "../utils/report";
+
+const route = useRoute();
+const router = useRouter();
+const favorites = useFavoritesStore();
+favorites.ensureLoaded();
+const favorited = computed(() => favorites.isMerchant(props.merchant.merchantId));
 
 const props = defineProps<{
   merchant: MerchantSummary;
@@ -46,6 +72,28 @@ const props = defineProps<{
 const business = computed(() => businessOf(props.merchant));
 const rating = computed(() => (props.merchant.ratingScore / 100).toFixed(1));
 const badgeCount = computed(() => props.cartCount ?? 0);
+
+async function toggleFav(event: MouseEvent): Promise<void> {
+  event.stopPropagation();
+  event.preventDefault();
+  if (tokenStore.profile === null) {
+    favorites.addPendingFavorite("MERCHANT", props.merchant.merchantId);
+    toastText("请先登录后再收藏");
+    router.push({ name: "login", query: { next: route.fullPath } });
+    return;
+  }
+  try {
+    if (favorited.value) {
+      await favorites.removeMerchant(props.merchant.merchantId);
+      toastText("已取消收藏");
+    } else {
+      await favorites.addMerchant(props.merchant.merchantId);
+      toastText("已收藏");
+    }
+  } catch {
+    // store 内部已经 toast 过了
+  }
+}
 </script>
 
 <style scoped>
@@ -105,8 +153,19 @@ const badgeCount = computed(() => props.cartCount ?? 0);
 }
 
 .mcard__rate {
+  padding: 0;
   color: var(--warn);
+  background: transparent;
+  border: 0;
+  font: inherit;
   font-weight: var(--font-weight-bold);
+  cursor: pointer;
+  text-decoration: underline dotted currentColor;
+  text-underline-offset: 2px;
+}
+
+.mcard__rate:active {
+  opacity: 0.78;
 }
 
 .mcard__meta {
@@ -154,5 +213,35 @@ const badgeCount = computed(() => props.cartCount ?? 0);
   font-size: 0.62rem;
   line-height: 18px;
   font-weight: var(--font-weight-bold);
+}
+
+.mcard__fav {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  width: 32px;
+  height: 32px;
+  display: grid;
+  place-items: center;
+  padding: 0;
+  color: var(--muted);
+  background: rgba(255, 255, 255, 0.85);
+  border: 0;
+  border-radius: 50%;
+  backdrop-filter: blur(2px);
+  transition: color 0.15s, background 0.15s, transform 0.1s;
+}
+.mcard__fav.has-badge {
+  right: 44px;
+}
+.mcard__fav:active {
+  transform: scale(0.88);
+}
+.mcard__fav svg {
+  width: 18px;
+  height: 18px;
+}
+.mcard__fav.is-on {
+  color: var(--primary);
 }
 </style>

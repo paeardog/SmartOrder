@@ -1,11 +1,20 @@
 <template>
   <article :class="['dish', { 'dish--off': !saleable }]">
-    <button type="button" class="dish__media" @click="openSheet">
+    <div role="button" class="dish__media" @click="openSheet">
       <ArtImage :src="dish.imageUrl" :name="dish.name" radius="14px" />
       <span v-if="!saleable" class="dish__stamp">{{ soldOutLabel }}</span>
       <span v-else-if="lowStock" class="dish__flag dish__flag--warn">仅剩 {{ remaining }} 份</span>
       <span v-if="dish.recommended && saleable" class="dish__flag dish__flag--rec">荐</span>
-    </button>
+      <button
+        type="button"
+        class="dish__fav"
+        :class="{ 'is-on': favorited }"
+        :aria-label="favorited ? '取消收藏' : '收藏'"
+        @click.stop="toggleFav"
+      >
+        <van-icon :name="favorited ? 'heart' : 'heart-o'" />
+      </button>
+    </div>
 
     <div class="dish__main">
       <button type="button" class="dish__info" @click="openSheet">
@@ -60,10 +69,20 @@
 
 <script setup lang="ts">
 import { computed } from "vue";
+import { useRoute, useRouter } from "vue-router";
 import type { DishSummary } from "@smartorder/api-client";
 import ArtImage from "./ArtImage.vue";
 import { priceParts, soldText, yuanText } from "../utils/format";
 import { blockedGroups, isMultiSpec } from "../utils/sku";
+import { useFavoritesStore } from "../stores/favorites";
+import { tokenStore } from "../stores/session";
+import { toastText } from "../utils/report";
+
+const route = useRoute();
+const router = useRouter();
+const favorites = useFavoritesStore();
+favorites.ensureLoaded();
+const favorited = computed(() => favorites.isDish(props.dish.dishId));
 
 const props = withDefaults(
   defineProps<{
@@ -165,6 +184,28 @@ const plusBinding = {
 const minusBinding = {
   click: () => emit("decrease"),
 };
+
+async function toggleFav(event: MouseEvent): Promise<void> {
+  event.stopPropagation();
+  event.preventDefault();
+  if (tokenStore.profile === null) {
+    favorites.addPendingFavorite("DISH", props.dish.dishId);
+    toastText("请先登录后再收藏");
+    router.push({ name: "login", query: { next: route.fullPath } });
+    return;
+  }
+  try {
+    if (favorited.value) {
+      await favorites.removeDish(props.dish.dishId);
+      toastText("已取消收藏");
+    } else {
+      await favorites.addDish(props.dish.dishId);
+      toastText("已收藏");
+    }
+  } catch {
+    // store 内部已经 toast 过了
+  }
+}
 </script>
 
 <style scoped>
@@ -224,6 +265,33 @@ const minusBinding = {
   right: 4px;
   left: auto;
   background: linear-gradient(135deg, #ffb43d, var(--primary));
+}
+
+.dish__fav {
+  position: absolute;
+  right: 4px;
+  bottom: 4px;
+  width: 28px;
+  height: 28px;
+  display: grid;
+  place-items: center;
+  padding: 0;
+  color: var(--muted);
+  background: rgba(255, 255, 255, 0.88);
+  border: 0;
+  border-radius: 50%;
+  backdrop-filter: blur(2px);
+  transition: color 0.15s, transform 0.1s;
+}
+.dish__fav:active {
+  transform: scale(0.88);
+}
+.dish__fav svg {
+  width: 14px;
+  height: 14px;
+}
+.dish__fav.is-on {
+  color: var(--primary);
 }
 
 .dish__main {
