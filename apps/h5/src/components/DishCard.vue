@@ -121,7 +121,7 @@ const soldOutLabel = computed(() => {
     return "休息中";
   }
   if (blockedGroups(props.dish).length > 0) {
-    return "已下架";
+    return "暂不可售";
   }
   return props.dish.stock.soldOut || remaining.value <= 0 ? "已售罄" : "";
 });

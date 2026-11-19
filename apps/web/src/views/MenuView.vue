@@ -9,6 +9,7 @@ import {
   cacheWrite,
   catalog,
   comboRemaining,
+  blockedGroups,
   defaultSelection,
   entriesOf,
   guardAdd,
@@ -297,6 +298,9 @@ function skuAdd(): void {
 }
 
 function remainingText(dish: DishSummary): string {
+  if (blockedGroups(dish).length > 0) {
+    return "暂不可售";
+  }
   if (dish.stock.soldOut) {
     return "已售罄";
   }

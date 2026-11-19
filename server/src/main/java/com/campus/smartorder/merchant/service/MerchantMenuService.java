@@ -557,6 +557,7 @@ public class MerchantMenuService {
 
         Set<Long> keptGroupIds = new LinkedHashSet<>();
         Set<Long> keptOptionIds = new LinkedHashSet<>();
+        Set<Long> groupsWithSubmittedOptions = new LinkedHashSet<>();
 
         for (MerchantConsoleDto.GroupSaveRequest input : inputs) {
             String name = trim(input.name(), 32);
@@ -590,6 +591,10 @@ public class MerchantMenuService {
                 optionGroupMapper.updateById(group);
             }
             keptGroupIds.add(group.getId());
+
+            if (input.options() != null && !input.options().isEmpty()) {
+                groupsWithSubmittedOptions.add(group.getId());
+            }
 
             for (MerchantConsoleDto.OptionSaveRequest optionInput :
                     input.options() == null ? List.<MerchantConsoleDto.OptionSaveRequest>of() : input.options()) {
@@ -628,6 +633,7 @@ public class MerchantMenuService {
         }
 
         List<Long> dropOptions = existingOptions.stream()
+                .filter(option -> groupsWithSubmittedOptions.contains(option.getGroupId()))
                 .map(DishOption::getId)
                 .filter(id -> !keptOptionIds.contains(id))
                 .toList();

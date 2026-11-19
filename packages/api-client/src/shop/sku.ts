@@ -137,7 +137,7 @@ export function guardAdd(
   const blocked = blockedGroups(dish);
   if (blocked.length > 0) {
     const first = blocked[0];
-    return { ok: false, reason: `${first ? first.name : "规格"} 的可选项已下架` };
+    return { ok: false, reason: `${first ? first.name : "规格"} 暂不可选` };
   }
   const missing = missingGroups(dish, selection);
   if (missing.length > 0) {

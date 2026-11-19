@@ -62,7 +62,7 @@
 
         <div v-if="blocked.length > 0" class="sku__alert">
           <van-icon name="warning-o" />
-          {{ blocked[0]?.name }} 的可选项已被商家下架，暂时无法下单
+          {{ blocked[0]?.name }} 的规格暂不可选，暂时无法下单
         </div>
 
         <div class="sku__group sku__note">
