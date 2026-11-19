@@ -27,6 +27,10 @@
     </header>
 
     <main class="profile-content">
+      <div v-if="profile && profile.verifyStatus === 3 && profile.verifyNote" class="profile-verify-note">
+        <van-icon name="warning-o" size="15" />
+        <span>认证驳回：{{ profile.verifyNote }}</span>
+      </div>
       <section class="profile-card so-card">
         <div class="profile-card__head">
           <span>我的订单</span>
@@ -340,6 +344,19 @@ onActivated(() => {
 
 .profile-hero__login:active {
   transform: scale(0.95);
+}
+
+.profile-verify-note {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.35rem;
+  padding: 0.6rem 0.75rem;
+  margin-bottom: 0.8rem;
+  border-radius: 12px;
+  background: var(--danger-soft);
+  color: var(--danger);
+  font-size: 0.75rem;
+  line-height: 1.5;
 }
 
 .profile-content {

@@ -38,6 +38,20 @@ class PlatformUserMapperTest {
     }
 
     @Test
+    void verifyUpdateBindsExpectedStatusAndNoteWithoutOverwritingOtherFields() {
+        String note = "' WHERE 1=1 --";
+        BoundSql statement = configuration.getMappedStatement(UserMapper.class.getName() + ".casVerifyStatus")
+                .getBoundSql(Map.of("userId", 7L, "expectedStatus", 1, "status", 2, "note", note));
+        String sql = statement.getSql().replaceAll("\\s+", " ").trim();
+        assertEquals("UPDATE u_user SET verify_status = ?, verify_note = ?, updated_at = NOW(3) "
+                + "WHERE id = ? AND verify_status = ?", sql);
+        assertEquals(List.of("status", "note", "userId", "expectedStatus"),
+                statement.getParameterMappings().stream().map(ParameterMapping::getProperty).toList());
+        assertFalse(sql.contains(note));
+        assertFalse(sql.contains("password_hash"));
+    }
+
+    @Test
     void summaryCountsAllUsersAndPendingVerificationInOneQuery() {
         var statement = configuration.getMappedStatement(UserMapper.class.getName() + ".selectPlatformUserSummary");
         String sql = statement.getBoundSql(null).getSql().replaceAll("\\s+", " ").trim();

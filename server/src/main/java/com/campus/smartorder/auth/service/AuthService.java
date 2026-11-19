@@ -282,6 +282,7 @@ public class AuthService {
         result.put("campusArea", Ids.blank(user.getCampusArea()));
         result.put("dormBuilding", Ids.blank(user.getDormBuilding()));
         result.put("verifyStatus", user.getVerifyStatus() == null ? User.VERIFY_NONE : user.getVerifyStatus());
+        result.put("verifyNote", Ids.blank(user.getVerifyNote()));
         result.put("creditScore", user.getCreditScore() == null ? 100 : user.getCreditScore());
         result.put("orderCount", user.getOrderCount() == null ? 0 : user.getOrderCount().intValue());
         return result;

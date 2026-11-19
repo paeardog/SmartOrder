@@ -56,6 +56,8 @@ import type {
   PlatformOverview,
   PlatformUserRow,
   PlatformUserSummary,
+  PlatformUserProfileUpdate,
+  PlatformUserVerifyRequest,
   ListPlatformUsersParams,
   PreflightRequest,
   PreflightResult,
@@ -213,6 +215,11 @@ export const platform = {
   userSummary: () => get<PlatformUserSummary>("/platform/users/summary"),
   updateUserStatus: (userId: string, status: 0 | 1, expectedStatus: 0 | 1, reason: string) =>
     patch<PlatformUserRow>(`/platform/users/${userId}/status`, { status, expectedStatus, reason }),
+  updateUserProfile: (userId: string, body: PlatformUserProfileUpdate) =>
+    patch<PlatformUserRow>(`/platform/users/${userId}/profile`, body),
+  auditUserVerify: (userId: string, body: PlatformUserVerifyRequest) =>
+    patch<PlatformUserRow>(`/platform/users/${userId}/verify`, body),
+  removeUser: (userId: string) => del<{ userId: string }>(`/platform/users/${userId}`),
   updateMerchantStatus: (merchantId: string, status: 1 | 2 | 3, expectedStatus: 1 | 2 | 3) =>
     patch<MerchantAuditRow>(`/platform/merchants/${merchantId}/status`, { status, expectedStatus }),
   merchants: (status?: number) => get<MerchantAuditRow[]>("/platform/merchants", { status }),

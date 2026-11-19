@@ -4,6 +4,7 @@ import com.campus.smartorder.common.api.BizException;
 import com.campus.smartorder.common.api.ErrorCode;
 import com.campus.smartorder.common.config.SmartOrderProperties;
 import com.campus.smartorder.console.ConsoleAccess;
+import com.campus.smartorder.order.mapper.OrderMapper;
 import com.campus.smartorder.user.api.PlatformUserDto;
 import com.campus.smartorder.user.domain.User;
 import com.campus.smartorder.user.mapper.UserMapper;
@@ -26,7 +27,8 @@ import static org.mockito.Mockito.*;
 class PlatformUserAuthenticationTest {
 
     private final UserMapper users = mock(UserMapper.class);
-    private final PlatformUserService service = new PlatformUserService(users);
+    private final OrderMapper orders = mock(OrderMapper.class);
+    private final PlatformUserService service = new PlatformUserService(users, orders);
     private final ObjectMapper json = new ObjectMapper();
     private JwtTokenProvider tokens;
     private JwtAuthenticationFilter filter;

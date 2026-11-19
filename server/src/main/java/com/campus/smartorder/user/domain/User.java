@@ -36,6 +36,7 @@ public class User {
     private Long orderCount;
     private Integer status;
     private String forbiddenReason;
+    private String verifyNote;
     private LocalDateTime lastLoginAt;
     private LocalDateTime createdAt;
     private LocalDateTime updatedAt;

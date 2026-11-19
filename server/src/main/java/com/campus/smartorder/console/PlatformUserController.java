@@ -8,6 +8,7 @@ import com.campus.smartorder.user.api.PlatformUserDto;
 import com.campus.smartorder.user.service.PlatformUserService;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
+import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PatchMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -15,6 +16,8 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
+
+import java.util.Map;
 
 @RestController
 @RequestMapping("/api/v1/platform/users")
@@ -48,11 +51,37 @@ public class PlatformUserController {
     public ApiResponse<PlatformUserDto.UserRow> changeStatus(HttpServletRequest request,
             @PathVariable String userId, @Valid @RequestBody PlatformUserDto.StatusRequest body) {
         requirePlatformAccess(request);
+        return ApiResponse.ok(platformUserService.changeStatus(idOf(userId), body));
+    }
+
+    @PatchMapping("/{userId}/verify")
+    public ApiResponse<PlatformUserDto.UserRow> auditVerify(HttpServletRequest request,
+            @PathVariable String userId, @Valid @RequestBody PlatformUserDto.VerifyRequest body) {
+        requirePlatformAccess(request);
+        return ApiResponse.ok(platformUserService.auditVerify(idOf(userId), body));
+    }
+
+    @PatchMapping("/{userId}/profile")
+    public ApiResponse<PlatformUserDto.UserRow> updateProfile(HttpServletRequest request,
+            @PathVariable String userId, @Valid @RequestBody PlatformUserDto.ProfileUpdateRequest body) {
+        requirePlatformAccess(request);
+        return ApiResponse.ok(platformUserService.updateProfile(idOf(userId), body));
+    }
+
+    @DeleteMapping("/{userId}")
+    public ApiResponse<Map<String, String>> delete(HttpServletRequest request, @PathVariable String userId) {
+        requirePlatformAccess(request);
+        Long id = idOf(userId);
+        platformUserService.delete(id);
+        return ApiResponse.ok(Map.of("userId", Ids.of(id)));
+    }
+
+    private Long idOf(String userId) {
         Long id = Ids.parse(userId);
         if (id == null || id <= 0) {
             throw new BizException(ErrorCode.INVALID_PARAM, "userId 不正确");
         }
-        return ApiResponse.ok(platformUserService.changeStatus(id, body));
+        return id;
     }
 
     private void requirePlatformAccess(HttpServletRequest request) {

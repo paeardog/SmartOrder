@@ -1,23 +1,35 @@
 package com.campus.smartorder.user.service;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
+import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.campus.smartorder.common.api.BizException;
 import com.campus.smartorder.common.api.ErrorCode;
 import com.campus.smartorder.common.api.Ids;
+import com.campus.smartorder.order.domain.Order;
+import com.campus.smartorder.order.mapper.OrderMapper;
 import com.campus.smartorder.user.api.PlatformUserDto;
 import com.campus.smartorder.user.domain.User;
 import com.campus.smartorder.user.mapper.UserMapper;
+import org.springframework.dao.DuplicateKeyException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+
+import java.time.LocalDateTime;
+import java.util.regex.Pattern;
 
 @Service
 public class PlatformUserService {
 
-    private final UserMapper userMapper;
+    private static final Pattern PHONE = Pattern.compile("^1[3-9]\\d{9}$");
+    private static final Pattern STUDENT_NO = Pattern.compile("^[A-Za-z0-9]{4,32}$");
 
-    public PlatformUserService(UserMapper userMapper) {
+    private final UserMapper userMapper;
+    private final OrderMapper orderMapper;
+
+    public PlatformUserService(UserMapper userMapper, OrderMapper orderMapper) {
         this.userMapper = userMapper;
+        this.orderMapper = orderMapper;
     }
 
     public PlatformUserDto.PageResponse<PlatformUserDto.UserRow> list(int page, int pageSize, String keyword,
@@ -29,7 +41,8 @@ public class PlatformUserService {
         }
         LambdaQueryWrapper<User> query = new LambdaQueryWrapper<User>()
                 .select(User::getId, User::getNickname, User::getRealName, User::getPhone, User::getStudentNo,
-                        User::getCollege, User::getCampusArea, User::getVerifyStatus, User::getCreditScore,
+                        User::getCollege, User::getCampusArea, User::getDormBuilding,
+                        User::getVerifyStatus, User::getVerifyNote, User::getCreditScore,
                         User::getOrderCount, User::getStatus, User::getForbiddenReason,
                         User::getCreatedAt, User::getLastLoginAt)
                 .eq(status != null, User::getStatus, status)
@@ -82,6 +95,130 @@ public class PlatformUserService {
         return toRow(user);
     }
 
+    @Transactional
+    public PlatformUserDto.UserRow auditVerify(Long userId, PlatformUserDto.VerifyRequest request) {
+        if (userId == null || userId <= 0 || request == null
+                || request.verifyStatus() == null || request.expectedVerifyStatus() == null
+                || (request.verifyStatus() != User.VERIFY_PASSED && request.verifyStatus() != User.VERIFY_REJECTED)
+                || request.expectedVerifyStatus() < User.VERIFY_NONE
+                || request.expectedVerifyStatus() > User.VERIFY_REJECTED) {
+            throw new BizException(ErrorCode.INVALID_PARAM);
+        }
+        String note = Ids.blank(request.reason()).strip();
+        if (note.codePointCount(0, note.length()) > 255) {
+            throw new BizException(ErrorCode.INVALID_PARAM, "审核备注不能超过255字");
+        }
+        if (request.verifyStatus() == User.VERIFY_REJECTED && note.isEmpty()) {
+            throw new BizException(ErrorCode.INVALID_PARAM, "驳回必须填写原因");
+        }
+        User user = userMapper.selectById(userId);
+        if (user == null) {
+            throw new BizException(ErrorCode.RESOURCE_NOT_FOUND, "用户不存在");
+        }
+        if (!request.expectedVerifyStatus().equals(user.getVerifyStatus())) {
+            throw verifyChanged();
+        }
+        if (request.verifyStatus() == User.VERIFY_PASSED && user.getVerifyStatus() == User.VERIFY_PASSED) {
+            return toRow(user);
+        }
+        if (request.verifyStatus() == User.VERIFY_REJECTED && user.getVerifyStatus() != User.VERIFY_PENDING) {
+            throw new BizException(ErrorCode.INVALID_PARAM, "只有审核中的用户才能驳回");
+        }
+        if (userMapper.casVerifyStatus(userId, request.expectedVerifyStatus(), request.verifyStatus(), note) != 1) {
+            throw verifyChanged();
+        }
+        user.setVerifyStatus(request.verifyStatus());
+        user.setVerifyNote(note);
+        return toRow(user);
+    }
+
+    @Transactional
+    public PlatformUserDto.UserRow updateProfile(Long userId, PlatformUserDto.ProfileUpdateRequest request) {
+        if (userId == null || userId <= 0 || request == null) {
+            throw new BizException(ErrorCode.INVALID_PARAM);
+        }
+        User user = userMapper.selectById(userId);
+        if (user == null) {
+            throw new BizException(ErrorCode.RESOURCE_NOT_FOUND, "用户不存在");
+        }
+
+        LambdaUpdateWrapper<User> update = new LambdaUpdateWrapper<User>().eq(User::getId, userId);
+        boolean changed = false;
+        if (request.nickname() != null) {
+            update.set(User::getNickname, limit(request.nickname(), 64, "昵称"));
+            changed = true;
+        }
+        if (request.realName() != null) {
+            update.set(User::getRealName, limit(request.realName(), 32, "真实姓名"));
+            changed = true;
+        }
+        if (request.college() != null) {
+            update.set(User::getCollege, limit(request.college(), 64, "学院"));
+            changed = true;
+        }
+        if (request.campusArea() != null) {
+            update.set(User::getCampusArea, limit(request.campusArea(), 64, "校区"));
+            changed = true;
+        }
+        if (request.dormBuilding() != null) {
+            update.set(User::getDormBuilding, limit(request.dormBuilding(), 64, "宿舍楼"));
+            changed = true;
+        }
+        if (request.phone() != null) {
+            String phone = limit(request.phone(), 20, "手机号");
+            if (!phone.isEmpty() && !PHONE.matcher(phone).matches()) {
+                throw new BizException(ErrorCode.INVALID_PARAM, "手机号格式不正确");
+            }
+            if (!phone.isEmpty() && userMapper.selectCount(new LambdaQueryWrapper<User>()
+                    .eq(User::getPhone, phone).ne(User::getId, userId)) > 0) {
+                throw new BizException(ErrorCode.USER_PHONE_EXISTS);
+            }
+            update.set(User::getPhone, phone.isEmpty() ? null : phone);
+            changed = true;
+        }
+        if (request.studentNo() != null) {
+            String studentNo = limit(request.studentNo(), 32, "学号");
+            if (!studentNo.isEmpty() && !STUDENT_NO.matcher(studentNo).matches()) {
+                throw new BizException(ErrorCode.INVALID_PARAM, "学号应为 4 至 32 位字母或数字");
+            }
+            if (!studentNo.isEmpty() && userMapper.selectCount(new LambdaQueryWrapper<User>()
+                    .eq(User::getStudentNo, studentNo).ne(User::getId, userId)) > 0) {
+                throw new BizException(ErrorCode.USER_STUDENT_NO_EXISTS);
+            }
+            update.set(User::getStudentNo, studentNo.isEmpty() ? null : studentNo);
+            changed = true;
+        }
+        if (!changed) {
+            return toRow(user);
+        }
+        update.set(User::getUpdatedAt, LocalDateTime.now());
+        try {
+            userMapper.update(null, update);
+        } catch (DuplicateKeyException ex) {
+            throw duplicateKey(ex);
+        }
+        User saved = userMapper.selectById(userId);
+        if (saved == null) {
+            throw new BizException(ErrorCode.RESOURCE_NOT_FOUND, "用户不存在");
+        }
+        return toRow(saved);
+    }
+
+    @Transactional
+    public void delete(Long userId) {
+        if (userId == null || userId <= 0) {
+            throw new BizException(ErrorCode.INVALID_PARAM);
+        }
+        User user = userMapper.selectById(userId);
+        if (user == null) {
+            throw new BizException(ErrorCode.RESOURCE_NOT_FOUND, "用户不存在");
+        }
+        if (orderMapper.selectCount(new LambdaQueryWrapper<Order>().eq(Order::getUserId, userId)) > 0) {
+            throw new BizException(ErrorCode.USER_HAS_ORDERS);
+        }
+        userMapper.deleteById(userId);
+    }
+
     public void requireUsable(Long userId) {
         User user = userId == null ? null : userMapper.selectById(userId);
         if (user == null) {
@@ -100,11 +237,35 @@ public class PlatformUserService {
         return new BizException(ErrorCode.INVALID_PARAM, "用户状态已变更，请刷新后重试");
     }
 
+    private BizException verifyChanged() {
+        return new BizException(ErrorCode.INVALID_PARAM, "认证状态已变更，请刷新后重试");
+    }
+
+    private BizException duplicateKey(DuplicateKeyException ex) {
+        String message = ex.getMessage() == null ? "" : ex.getMessage();
+        if (message.contains("uk_u_user_phone")) {
+            return new BizException(ErrorCode.USER_PHONE_EXISTS);
+        }
+        if (message.contains("uk_u_user_student_no")) {
+            return new BizException(ErrorCode.USER_STUDENT_NO_EXISTS);
+        }
+        return new BizException(ErrorCode.INVALID_PARAM, "手机号或学号已被其他用户使用");
+    }
+
+    private String limit(String value, int max, String label) {
+        String text = Ids.blank(value).strip();
+        if (text.codePointCount(0, text.length()) > max) {
+            throw new BizException(ErrorCode.INVALID_PARAM, label + "不能超过" + max + "字");
+        }
+        return text;
+    }
+
     private PlatformUserDto.UserRow toRow(User user) {
         return new PlatformUserDto.UserRow(Ids.of(user.getId()), Ids.blank(user.getNickname()),
                 Ids.blank(user.getRealName()), Ids.blank(user.getPhone()), Ids.blank(user.getStudentNo()),
-                Ids.blank(user.getCollege()), Ids.blank(user.getCampusArea()), user.getVerifyStatus(),
-                user.getCreditScore(), user.getOrderCount() == null ? 0L : user.getOrderCount(),
-                user.getStatus(), Ids.blank(user.getForbiddenReason()), user.getCreatedAt(), user.getLastLoginAt());
+                Ids.blank(user.getCollege()), Ids.blank(user.getCampusArea()), Ids.blank(user.getDormBuilding()),
+                user.getVerifyStatus(), user.getCreditScore(), user.getOrderCount() == null ? 0L : user.getOrderCount(),
+                user.getStatus(), Ids.blank(user.getForbiddenReason()), Ids.blank(user.getVerifyNote()),
+                user.getCreatedAt(), user.getLastLoginAt());
     }
 }

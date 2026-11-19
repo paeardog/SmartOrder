@@ -2,7 +2,12 @@
 import { computed, onBeforeUnmount, ref, watch } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import { ApiError, platform } from "@smartorder/api-client";
-import type { PlatformUserRow, PlatformUserSummary, VerifyStatus } from "@smartorder/api-client";
+import type {
+  PlatformUserProfileUpdate,
+  PlatformUserRow,
+  PlatformUserSummary,
+  VerifyStatus,
+} from "@smartorder/api-client";
 import { VERIFY_STATUS_LABELS, formatDateTime, groupThousands } from "@smartorder/shared";
 import MetricCard from "../components/MetricCard.vue";
 import UiModal from "../components/UiModal.vue";
@@ -23,6 +28,26 @@ const detail = ref<PlatformUserRow | null>(null);
 const changing = ref<PlatformUserRow | null>(null);
 const reason = ref("");
 const submitting = ref(false);
+
+interface ProfileForm {
+  nickname: string;
+  realName: string;
+  studentNo: string;
+  phone: string;
+  college: string;
+  campusArea: string;
+  dormBuilding: string;
+}
+
+const editing = ref<PlatformUserRow | null>(null);
+const profileForm = ref<ProfileForm>(emptyProfile());
+const profileSaving = ref(false);
+const verifying = ref<{ row: PlatformUserRow; kind: "approve" | "reject" } | null>(null);
+const verifyReason = ref("");
+const verifySaving = ref(false);
+const deleting = ref<PlatformUserRow | null>(null);
+const deleteError = ref("");
+const deleteSaving = ref(false);
 let requestId = 0;
 
 const status = computed(() => route.query["status"] === "0" ? 0 : route.query["status"] === "1" ? 1 : undefined);
@@ -92,7 +117,7 @@ async function saveStatus(): Promise<void> {
   submitting.value = true;
   try {
     const next = await platform.updateUserStatus(row.userId, row.status === 1 ? 0 : 1, row.status, reason.value.trim());
-    if (detail.value?.userId === next.userId) detail.value = next;
+    applyRow(next);
     changing.value = null;
     toastOk(next.status === 0 ? "用户已封禁" : "用户已解禁");
     await load();
@@ -100,6 +125,116 @@ async function saveStatus(): Promise<void> {
     toastError(caught instanceof ApiError ? caught.message : "状态更新失败，请重试");
   } finally {
     submitting.value = false;
+  }
+}
+
+function emptyProfile(): ProfileForm {
+  return { nickname: "", realName: "", studentNo: "", phone: "", college: "", campusArea: "", dormBuilding: "" };
+}
+
+function applyRow(next: PlatformUserRow): void {
+  const index = rows.value.findIndex((item) => item.userId === next.userId);
+  if (index >= 0) rows.value[index] = next;
+  if (detail.value?.userId === next.userId) detail.value = next;
+}
+
+function openEdit(row: PlatformUserRow): void {
+  editing.value = row;
+  profileForm.value = {
+    nickname: row.nickname,
+    realName: row.realName,
+    studentNo: row.studentNo,
+    phone: row.phone,
+    college: row.college,
+    campusArea: row.campusArea,
+    dormBuilding: row.dormBuilding,
+  };
+}
+
+async function saveProfile(): Promise<void> {
+  const row = editing.value;
+  if (!row || profileSaving.value) return;
+  const phone = profileForm.value.phone.trim();
+  if (phone !== "" && !/^1[3-9]\d{9}$/.test(phone)) {
+    toastError("手机号格式不正确");
+    return;
+  }
+  const studentNo = profileForm.value.studentNo.trim();
+  if (studentNo !== "" && !/^[A-Za-z0-9]{4,32}$/.test(studentNo)) {
+    toastError("学号应为 4 至 32 位字母或数字");
+    return;
+  }
+  profileSaving.value = true;
+  try {
+    const body: PlatformUserProfileUpdate = {
+      nickname: profileForm.value.nickname,
+      realName: profileForm.value.realName,
+      studentNo: profileForm.value.studentNo,
+      phone: profileForm.value.phone,
+      college: profileForm.value.college,
+      campusArea: profileForm.value.campusArea,
+      dormBuilding: profileForm.value.dormBuilding,
+    };
+    const next = await platform.updateUserProfile(row.userId, body);
+    applyRow(next);
+    editing.value = null;
+    toastOk("用户资料已更新");
+    await load();
+  } catch (caught) {
+    toastError(caught instanceof ApiError ? caught.message : "资料保存失败，请重试");
+  } finally {
+    profileSaving.value = false;
+  }
+}
+
+function openVerify(row: PlatformUserRow, kind: "approve" | "reject"): void {
+  verifying.value = { row, kind };
+  verifyReason.value = "";
+}
+
+async function saveVerify(): Promise<void> {
+  const current = verifying.value;
+  if (!current || verifySaving.value) return;
+  const text = verifyReason.value.trim();
+  if (current.kind === "reject" && text === "") return;
+  verifySaving.value = true;
+  try {
+    const next = await platform.auditUserVerify(current.row.userId, {
+      verifyStatus: current.kind === "approve" ? 2 : 3,
+      expectedVerifyStatus: current.row.verifyStatus,
+      reason: text,
+    });
+    applyRow(next);
+    verifying.value = null;
+    toastOk(current.kind === "approve" ? "已通过学籍认证" : "已驳回学籍认证");
+    await load();
+  } catch (caught) {
+    toastError(caught instanceof ApiError ? caught.message : "审核失败，请重试");
+  } finally {
+    verifySaving.value = false;
+  }
+}
+
+function openDelete(row: PlatformUserRow): void {
+  deleting.value = row;
+  deleteError.value = "";
+}
+
+async function confirmDelete(): Promise<void> {
+  const row = deleting.value;
+  if (!row || deleteSaving.value) return;
+  deleteSaving.value = true;
+  deleteError.value = "";
+  try {
+    await platform.removeUser(row.userId);
+    if (detail.value?.userId === row.userId) detail.value = null;
+    deleting.value = null;
+    toastOk("用户已删除");
+    await load();
+  } catch (caught) {
+    deleteError.value = caught instanceof ApiError ? caught.message : "删除失败，请重试";
+  } finally {
+    deleteSaving.value = false;
   }
 }
 
@@ -140,7 +275,7 @@ void load();
               <td><span class="so-tag" :class="row.verifyStatus === 2 ? 'so-tag--ok' : row.verifyStatus === 1 ? 'so-tag--warn' : 'so-tag--muted'">{{ VERIFY_STATUS_LABELS[row.verifyStatus] }}</span></td>
               <td class="so-cell--num">{{ groupThousands(row.orderCount) }}</td>
               <td><span class="so-tag" :class="row.status === 1 ? 'so-tag--ok' : 'so-tag--danger'">{{ row.status === 1 ? "正常" : "已封禁" }}</span></td>
-              <td class="so-cell--act"><button class="so-btn so-btn--ghost so-btn--sm" type="button" @click="detail = row">详情</button><button class="so-btn so-btn--sm" :class="row.status === 1 ? 'so-btn--danger' : 'so-btn--ok'" type="button" :disabled="submitting" @click="openChange(row)">{{ row.status === 1 ? "封禁" : "解禁" }}</button></td>
+              <td class="so-cell--act"><button class="so-btn so-btn--ghost so-btn--sm" type="button" @click="detail = row">详情</button><button v-if="row.verifyStatus === 1 || row.verifyStatus === 3" class="so-btn so-btn--ok so-btn--sm" type="button" :disabled="verifySaving" @click="openVerify(row, 'approve')">{{ row.verifyStatus === 3 ? "重新通过" : "通过" }}</button><button v-if="row.verifyStatus === 1" class="so-btn so-btn--danger so-btn--sm" type="button" :disabled="verifySaving" @click="openVerify(row, 'reject')">驳回</button><button class="so-btn so-btn--ghost so-btn--sm" type="button" @click="openEdit(row)">编辑</button><button class="so-btn so-btn--sm" :class="row.status === 1 ? 'so-btn--danger' : 'so-btn--ok'" type="button" :disabled="submitting" @click="openChange(row)">{{ row.status === 1 ? "封禁" : "解禁" }}</button><button class="so-btn so-btn--danger so-btn--sm" type="button" :disabled="deleteSaving" @click="openDelete(row)">删除</button></td>
             </tr>
           </tbody>
         </table>
@@ -157,13 +292,15 @@ void load();
       <div class="so-kv"><span class="so-kv__key">学号</span><span class="so-kv__val">{{ detail.studentNo || "未绑定" }}</span></div>
       <div class="so-kv"><span class="so-kv__key">手机号</span><span class="so-kv__val">{{ detail.phone || "未绑定" }}</span></div>
       <div class="so-kv"><span class="so-kv__key">校区 / 学院</span><span class="so-kv__val">{{ detail.campusArea || "未填写" }} / {{ detail.college || "未填写" }}</span></div>
+      <div class="so-kv"><span class="so-kv__key">宿舍楼</span><span class="so-kv__val">{{ detail.dormBuilding || "未填写" }}</span></div>
       <div class="so-kv"><span class="so-kv__key">学籍认证</span><span class="so-kv__val">{{ VERIFY_STATUS_LABELS[detail.verifyStatus] }}</span></div>
       <div class="so-kv"><span class="so-kv__key">信用分 / 成功订单</span><span class="so-kv__val">{{ detail.creditScore }} / {{ detail.orderCount }}</span></div>
       <div class="so-kv"><span class="so-kv__key">注册时间</span><span class="so-kv__val">{{ formatDateTime(detail.createdAt, true) }}</span></div>
       <div class="so-kv"><span class="so-kv__key">最近登录</span><span class="so-kv__val">{{ detail.lastLoginAt ? formatDateTime(detail.lastLoginAt, true) : "暂无记录" }}</span></div>
       <div class="so-kv"><span class="so-kv__key">账号状态</span><span class="so-kv__val">{{ detail.status === 1 ? "正常" : "已封禁" }}</span></div>
       <p v-if="detail.forbiddenReason" class="so-order__remark" style="margin-top: 1rem">封禁原因：{{ detail.forbiddenReason }}</p>
-      <template #footer><button class="so-btn so-btn--secondary" type="button" @click="detail = null">关闭</button></template>
+      <p v-if="detail.verifyNote" class="so-order__remark" style="margin-top: 1rem">认证备注：{{ detail.verifyNote }}</p>
+      <template #footer><button class="so-btn so-btn--danger" type="button" @click="openDelete(detail)">删除用户</button><button class="so-btn so-btn--secondary" type="button" @click="openEdit(detail)">编辑资料</button><button class="so-btn so-btn--secondary" type="button" @click="detail = null">关闭</button></template>
     </UiModal>
     <UiModal v-if="changing" :title="changing.status === 1 ? '封禁用户' : '解除封禁'" @close="!submitting && (changing = null)">
       <p style="margin-bottom: 0.8rem">确认{{ changing.status === 1 ? "封禁" : "解禁" }}「{{ changing.nickname || changing.realName || changing.userId }}」？</p>
@@ -171,6 +308,31 @@ void load();
       <label v-if="changing.status === 1" class="so-field" style="margin-top: 1rem"><span class="so-field__label">封禁原因</span><textarea v-model="reason" class="so-textarea" maxlength="255" :disabled="submitting" placeholder="请填写封禁原因（必填，最多 255 字）" /></label>
       <p v-else-if="changing.forbiddenReason" class="so-order__remark" style="margin-top: 1rem">原封禁原因：{{ changing.forbiddenReason }}</p>
       <template #footer><button class="so-btn so-btn--secondary" type="button" :disabled="submitting" @click="changing = null">取消</button><button class="so-btn" :class="changing.status === 1 ? 'so-btn--danger' : 'so-btn--primary'" type="button" :disabled="submitting || (changing.status === 1 && !reason.trim())" @click="saveStatus">{{ submitting ? "处理中" : changing.status === 1 ? "确认封禁" : "确认解禁" }}</button></template>
+    </UiModal>
+    <UiModal v-if="verifying" :title="verifying.kind === 'approve' ? '通过学籍认证' : '驳回学籍认证'" @close="!verifySaving && (verifying = null)">
+      <p style="margin-bottom: 0.8rem">确认{{ verifying.kind === "approve" ? "通过" : "驳回" }}「{{ verifying.row.nickname || verifying.row.realName || verifying.row.userId }}」的学籍认证？</p>
+      <p class="so-field__hint">{{ verifying.kind === "approve" ? '通过后用户认证状态变为「已认证」。' : '驳回后用户认证状态变为「认证驳回」，请填写可核实的原因，用户端可见。' }}</p>
+      <label class="so-field" style="margin-top: 1rem"><span class="so-field__label">{{ verifying.kind === "approve" ? "审核备注（选填）" : "驳回原因" }}</span><textarea v-model="verifyReason" class="so-textarea" maxlength="255" :disabled="verifySaving" :placeholder="verifying.kind === 'approve' ? '可填写审核备注（最多 255 字）' : '请填写驳回原因（必填，最多 255 字）'" /></label>
+      <template #footer><button class="so-btn so-btn--secondary" type="button" :disabled="verifySaving" @click="verifying = null">取消</button><button class="so-btn" :class="verifying.kind === 'approve' ? 'so-btn--ok' : 'so-btn--danger'" type="button" :disabled="verifySaving || (verifying.kind === 'reject' && !verifyReason.trim())" @click="saveVerify">{{ verifySaving ? "处理中" : verifying.kind === 'approve' ? "确认通过" : "确认驳回" }}</button></template>
+    </UiModal>
+    <UiModal v-if="editing" title="编辑用户资料" wide @close="!profileSaving && (editing = null)">
+      <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 0.8rem">
+        <label class="so-field"><span class="so-field__label">昵称</span><input v-model="profileForm.nickname" class="so-input" type="text" maxlength="64" :disabled="profileSaving" /></label>
+        <label class="so-field"><span class="so-field__label">真实姓名</span><input v-model="profileForm.realName" class="so-input" type="text" maxlength="32" :disabled="profileSaving" /></label>
+        <label class="so-field"><span class="so-field__label">学号</span><input v-model="profileForm.studentNo" class="so-input" type="text" maxlength="32" :disabled="profileSaving" placeholder="留空表示未绑定" /></label>
+        <label class="so-field"><span class="so-field__label">手机号</span><input v-model="profileForm.phone" class="so-input" type="tel" maxlength="20" :disabled="profileSaving" placeholder="留空表示未绑定" /></label>
+        <label class="so-field"><span class="so-field__label">学院</span><input v-model="profileForm.college" class="so-input" type="text" maxlength="64" :disabled="profileSaving" /></label>
+        <label class="so-field"><span class="so-field__label">校区</span><input v-model="profileForm.campusArea" class="so-input" type="text" maxlength="64" :disabled="profileSaving" /></label>
+        <label class="so-field"><span class="so-field__label">宿舍楼</span><input v-model="profileForm.dormBuilding" class="so-input" type="text" maxlength="64" :disabled="profileSaving" /></label>
+      </div>
+      <p class="so-field__hint" style="margin-top: 0.8rem">手机号需为 11 位大陆手机号；学号为 4–32 位字母或数字；留空会解除绑定。</p>
+      <template #footer><button class="so-btn so-btn--secondary" type="button" :disabled="profileSaving" @click="editing = null">取消</button><button class="so-btn so-btn--primary" type="button" :disabled="profileSaving" @click="saveProfile">{{ profileSaving ? "保存中" : "保存资料" }}</button></template>
+    </UiModal>
+    <UiModal v-if="deleting" title="删除用户" @close="!deleteSaving && (deleting = null)">
+      <p style="margin-bottom: 0.8rem">确认删除「{{ deleting.nickname || deleting.realName || deleting.userId }}」？</p>
+      <p class="so-field__hint">删除不可恢复，将同时清除该用户的收货地址、收藏、优惠券、购物车与通知等个人数据。存在订单记录的用户不能删除，请改用封禁。</p>
+      <div v-if="deleteError" class="so-banner so-banner--danger" role="alert" style="margin-top: 1rem"><span>{{ deleteError }}</span></div>
+      <template #footer><button class="so-btn so-btn--secondary" type="button" :disabled="deleteSaving" @click="deleting = null">取消</button><button class="so-btn so-btn--danger" type="button" :disabled="deleteSaving" @click="confirmDelete">{{ deleteSaving ? "删除中" : "确认删除" }}</button></template>
     </UiModal>
   </div>
 </template>

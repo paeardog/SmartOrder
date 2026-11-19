@@ -6,6 +6,7 @@ import com.baomidou.mybatisplus.core.metadata.TableInfoHelper;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.campus.smartorder.common.api.BizException;
 import com.campus.smartorder.common.api.ErrorCode;
+import com.campus.smartorder.order.mapper.OrderMapper;
 import com.campus.smartorder.user.api.PlatformUserDto;
 import com.campus.smartorder.user.domain.User;
 import com.campus.smartorder.user.mapper.UserMapper;
@@ -16,6 +17,7 @@ import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.CsvSource;
 import org.junit.jupiter.params.provider.NullSource;
 import org.junit.jupiter.params.provider.ValueSource;
+import org.mockito.ArgumentCaptor;
 
 import java.time.LocalDateTime;
 import java.util.List;
@@ -27,7 +29,8 @@ import static org.mockito.Mockito.*;
 class PlatformUserServiceTest {
 
     private final UserMapper users = mock(UserMapper.class);
-    private final PlatformUserService service = new PlatformUserService(users);
+    private final OrderMapper orders = mock(OrderMapper.class);
+    private final PlatformUserService service = new PlatformUserService(users, orders);
 
     @BeforeAll
     static void initializeMetadata() {
@@ -59,7 +62,8 @@ class PlatformUserServiceTest {
             assertTrue(query.getParamNameValuePairs().containsValue(1));
             assertEquals(4, query.getParamNameValuePairs().values().stream().filter(pattern::equals).count());
             assertFalse(query.getSqlSelect().contains("password_hash"));
-            assertFalse(query.getSqlSelect().contains("dorm_building"));
+            assertTrue(query.getSqlSelect().contains("dorm_building"));
+            assertTrue(query.getSqlSelect().contains("verify_note"));
             assertTrue(query.getSqlSelect().contains("forbidden_reason"));
             return page.setTotal(41).setRecords(List.of(user(User.STATUS_BANNED)));
         });
@@ -76,7 +80,9 @@ class PlatformUserServiceTest {
         assertEquals("202611180001", row.studentNo());
         assertEquals("计算机学院", row.college());
         assertEquals("北校区", row.campusArea());
+        assertEquals("紫荆公寓 3 栋", row.dormBuilding());
         assertEquals(1, row.verifyStatus());
+        assertEquals("证件不清晰", row.verifyNote());
         assertEquals(100, row.creditScore());
         assertEquals(5000000000L, row.orderCount());
         assertEquals(0, row.status());
@@ -180,6 +186,165 @@ class PlatformUserServiceTest {
     }
 
     @Test
+    void approvesPendingUserWithTrimmedNote() {
+        when(users.selectById(1L)).thenReturn(user(User.STATUS_NORMAL));
+        when(users.casVerifyStatus(1L, 1, 2, "资料完整")).thenReturn(1);
+        var result = service.auditVerify(1L, new PlatformUserDto.VerifyRequest(2, 1, "  资料完整  "));
+        assertEquals(2, result.verifyStatus());
+        assertEquals("资料完整", result.verifyNote());
+        verify(users).casVerifyStatus(1L, 1, 2, "资料完整");
+    }
+
+    @Test
+    void approvesRejectedUserAgain() {
+        User rejected = user(User.STATUS_NORMAL);
+        rejected.setVerifyStatus(User.VERIFY_REJECTED);
+        when(users.selectById(1L)).thenReturn(rejected);
+        when(users.casVerifyStatus(1L, 3, 2, "")).thenReturn(1);
+        assertEquals(2, service.auditVerify(1L, new PlatformUserDto.VerifyRequest(2, 3, null)).verifyStatus());
+    }
+
+    @ParameterizedTest
+    @NullSource
+    @ValueSource(strings = {"", "  ", "\u2003"})
+    void requiresReasonToReject(String reason) {
+        assertError(ErrorCode.INVALID_PARAM,
+                () -> service.auditVerify(1L, new PlatformUserDto.VerifyRequest(3, 1, reason)));
+        verifyNoInteractions(users);
+    }
+
+    @Test
+    void rejectsTooLongVerifyNote() {
+        assertError(ErrorCode.INVALID_PARAM,
+                () -> service.auditVerify(1L, new PlatformUserDto.VerifyRequest(2, 1, "字".repeat(256))));
+        verifyNoInteractions(users);
+    }
+
+    @Test
+    void rejectsStaleVerifyStatusBeforeWriting() {
+        when(users.selectById(1L)).thenReturn(user(User.STATUS_NORMAL));
+        var error = assertError(ErrorCode.INVALID_PARAM,
+                () -> service.auditVerify(1L, new PlatformUserDto.VerifyRequest(2, 0, null)));
+        assertTrue(error.getMessage().contains("刷新"));
+        verify(users, never()).casVerifyStatus(anyLong(), anyInt(), anyInt(), anyString());
+    }
+
+    @Test
+    void detectsConcurrentVerifyChange() {
+        User user = user(User.STATUS_NORMAL);
+        when(users.selectById(1L)).thenReturn(user);
+        when(users.casVerifyStatus(1L, 1, 2, "")).thenReturn(0);
+        assertError(ErrorCode.INVALID_PARAM,
+                () -> service.auditVerify(1L, new PlatformUserDto.VerifyRequest(2, 1, "")));
+        assertEquals(User.VERIFY_PENDING, user.getVerifyStatus());
+    }
+
+    @Test
+    void onlyRejectsPendingUser() {
+        User passed = user(User.STATUS_NORMAL);
+        passed.setVerifyStatus(User.VERIFY_PASSED);
+        when(users.selectById(1L)).thenReturn(passed);
+        assertError(ErrorCode.INVALID_PARAM,
+                () -> service.auditVerify(1L, new PlatformUserDto.VerifyRequest(3, 2, "原因")));
+        verify(users, never()).casVerifyStatus(anyLong(), anyInt(), anyInt(), anyString());
+    }
+
+    @Test
+    void rejectsInvalidVerifyTransition() {
+        assertError(ErrorCode.INVALID_PARAM,
+                () -> service.auditVerify(1L, new PlatformUserDto.VerifyRequest(1, 1, null)));
+        assertError(ErrorCode.INVALID_PARAM,
+                () -> service.auditVerify(1L, new PlatformUserDto.VerifyRequest(2, 4, null)));
+        assertError(ErrorCode.INVALID_PARAM,
+                () -> service.auditVerify(1L, new PlatformUserDto.VerifyRequest(null, 1, null)));
+        verifyNoInteractions(users);
+    }
+
+    @Test
+    void updatesProfileFieldsAndClearsPhone() {
+        User existing = user(User.STATUS_NORMAL);
+        User saved = user(User.STATUS_NORMAL);
+        saved.setNickname("新昵称");
+        saved.setCollege("软件学院");
+        saved.setPhone(null);
+        when(users.selectById(1L)).thenReturn(existing, saved);
+        when(users.selectCount(any())).thenReturn(0L);
+        when(users.update(isNull(), any())).thenReturn(1);
+
+        var result = service.updateProfile(1L, new PlatformUserDto.ProfileUpdateRequest(
+                "  新昵称  ", null, null, "", "  软件学院  ", null, null));
+
+        assertEquals("新昵称", result.nickname());
+        assertEquals("软件学院", result.college());
+        assertEquals("", result.phone());
+        @SuppressWarnings({"unchecked", "rawtypes"})
+        ArgumentCaptor<com.baomidou.mybatisplus.core.conditions.Wrapper<User>> captor =
+                ArgumentCaptor.forClass((Class) com.baomidou.mybatisplus.core.conditions.Wrapper.class);
+        verify(users).update(isNull(), captor.capture());
+        var wrapper = (com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper<User>) captor.getValue();
+        String set = wrapper.getSqlSet();
+        assertTrue(set.contains("nickname="));
+        assertTrue(set.contains("college="));
+        assertTrue(set.contains("phone="));
+        assertTrue(wrapper.getParamNameValuePairs().containsValue(null));
+    }
+
+    @Test
+    void rejectsDuplicatePhoneBeforeUpdate() {
+        when(users.selectById(1L)).thenReturn(user(User.STATUS_NORMAL));
+        when(users.selectCount(any())).thenReturn(1L);
+        assertError(ErrorCode.USER_PHONE_EXISTS,
+                () -> service.updateProfile(1L,
+                        new PlatformUserDto.ProfileUpdateRequest(null, null, null, "13900000000", null, null, null)));
+        verify(users, never()).update(isNull(), any());
+    }
+
+    @Test
+    void rejectsDuplicateStudentNoBeforeUpdate() {
+        when(users.selectById(1L)).thenReturn(user(User.STATUS_NORMAL));
+        when(users.selectCount(any())).thenReturn(1L);
+        assertError(ErrorCode.USER_STUDENT_NO_EXISTS,
+                () -> service.updateProfile(1L,
+                        new PlatformUserDto.ProfileUpdateRequest(null, null, "20269999", null, null, null, null)));
+        verify(users, never()).update(isNull(), any());
+    }
+
+    @Test
+    void rejectsMalformedPhoneAndStudentNo() {
+        when(users.selectById(1L)).thenReturn(user(User.STATUS_NORMAL));
+        assertError(ErrorCode.INVALID_PARAM,
+                () -> service.updateProfile(1L,
+                        new PlatformUserDto.ProfileUpdateRequest(null, null, null, "12345", null, null, null)));
+        assertError(ErrorCode.INVALID_PARAM,
+                () -> service.updateProfile(1L,
+                        new PlatformUserDto.ProfileUpdateRequest(null, null, "学号", null, null, null, null)));
+        verify(users, never()).update(isNull(), any());
+    }
+
+    @Test
+    void deleteRejectsUserWithOrders() {
+        when(users.selectById(1L)).thenReturn(user(User.STATUS_NORMAL));
+        when(orders.selectCount(any())).thenReturn(3L);
+        assertError(ErrorCode.USER_HAS_ORDERS, () -> service.delete(1L));
+        verify(users, never()).deleteById(anyLong());
+    }
+
+    @Test
+    void deletesUserWithoutOrders() {
+        when(users.selectById(1L)).thenReturn(user(User.STATUS_NORMAL));
+        when(orders.selectCount(any())).thenReturn(0L);
+        service.delete(1L);
+        verify(users).deleteById(1L);
+    }
+
+    @Test
+    void rejectsMissingUserForVerifyAndDelete() {
+        assertError(ErrorCode.RESOURCE_NOT_FOUND,
+                () -> service.auditVerify(1L, new PlatformUserDto.VerifyRequest(2, 1, null)));
+        assertError(ErrorCode.RESOURCE_NOT_FOUND, () -> service.delete(1L));
+    }
+
+    @Test
     void rejectsStaleExpectedStatusEvenWhenTargetAlreadyMatches() {
         when(users.selectById(1L)).thenReturn(user(User.STATUS_BANNED));
         var error = assertError(ErrorCode.INVALID_PARAM,
@@ -226,7 +391,9 @@ class PlatformUserServiceTest {
         user.setStudentNo("202611180001");
         user.setCollege("计算机学院");
         user.setCampusArea("北校区");
+        user.setDormBuilding("紫荆公寓 3 栋");
         user.setVerifyStatus(1);
+        user.setVerifyNote("证件不清晰");
         user.setCreditScore(100);
         user.setOrderCount(5000000000L);
         user.setStatus(status);

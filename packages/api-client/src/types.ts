@@ -82,6 +82,7 @@ export interface UserProfile {
   campusArea: string;
   dormBuilding: string;
   verifyStatus: VerifyStatus;
+  verifyNote: string;
   creditScore: number;
   orderCount: number;
 }
@@ -637,7 +638,9 @@ export interface PlatformUserRow {
   studentNo: string;
   college: string;
   campusArea: string;
+  dormBuilding: string;
   verifyStatus: VerifyStatus;
+  verifyNote: string;
   creditScore: number;
   orderCount: number;
   status: 0 | 1;
@@ -659,6 +662,22 @@ export interface ListPlatformUsersParams {
   keyword?: string;
   status?: 0 | 1;
   verifyStatus?: VerifyStatus;
+}
+
+export interface PlatformUserProfileUpdate {
+  nickname?: string;
+  realName?: string;
+  studentNo?: string;
+  phone?: string;
+  college?: string;
+  campusArea?: string;
+  dormBuilding?: string;
+}
+
+export interface PlatformUserVerifyRequest {
+  verifyStatus: 2 | 3;
+  expectedVerifyStatus: VerifyStatus;
+  reason?: string;
 }
 
 export interface MerchantAuditRow {

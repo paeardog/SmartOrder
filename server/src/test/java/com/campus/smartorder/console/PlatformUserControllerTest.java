@@ -75,8 +75,8 @@ class PlatformUserControllerTest {
         assertEquals(Set.of("list", "total", "page", "pageSize"), fields(root.get("data")));
         JsonNode user = root.at("/data/list/0");
         assertEquals(Set.of("userId", "nickname", "realName", "phone", "studentNo", "college", "campusArea",
-                "verifyStatus", "creditScore", "orderCount", "status", "forbiddenReason", "createdAt", "lastLoginAt"),
-                fields(user));
+                "dormBuilding", "verifyStatus", "creditScore", "orderCount", "status", "forbiddenReason",
+                "verifyNote", "createdAt", "lastLoginAt"), fields(user));
         assertTrue(user.get("userId").isTextual());
         assertEquals("9007199254740993", user.get("userId").asText());
         assertTrue(user.get("orderCount").isIntegralNumber());
@@ -179,6 +179,53 @@ class PlatformUserControllerTest {
                 .andExpect(jsonPath("$.code").value(10001)).andExpect(jsonPath("$.data").isEmpty());
     }
 
+    @Test
+    void auditsVerificationThroughServiceAndWhitelistDto() throws Exception {
+        var request = new PlatformUserDto.VerifyRequest(2, 1, "资料完整");
+        when(service.auditVerify(1L, request)).thenReturn(row());
+        mvc.perform(admin(patch("/api/v1/platform/users/1/verify")).contentType(MediaType.APPLICATION_JSON)
+                        .content(json.writeValueAsString(request)))
+                .andExpect(jsonPath("$.code").value(0)).andExpect(jsonPath("$.data.userId").isString())
+                .andExpect(jsonPath("$.data.passwordHash").doesNotExist());
+        verify(service).auditVerify(1L, request);
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"{}", "{\"verifyStatus\":2}", "{\"expectedVerifyStatus\":1}",
+            "{\"verifyStatus\":4,\"expectedVerifyStatus\":1}",
+            "{\"verifyStatus\":2,\"expectedVerifyStatus\":-1}"})
+    void validatesVerifyBodyBeforeService(String body) throws Exception {
+        mvc.perform(admin(patch("/api/v1/platform/users/1/verify")).contentType(MediaType.APPLICATION_JSON)
+                        .content(body))
+                .andExpect(jsonPath("$.code").value(10001));
+        verifyNoInteractions(service);
+    }
+
+    @Test
+    void updatesProfileThroughServiceAndWhitelistDto() throws Exception {
+        var request = new PlatformUserDto.ProfileUpdateRequest("小林", "林同学", "202611180001",
+                "13800000000", "计算机学院", "北校区", "紫荆公寓 1 栋");
+        when(service.updateProfile(1L, request)).thenReturn(row());
+        mvc.perform(admin(patch("/api/v1/platform/users/1/profile")).contentType(MediaType.APPLICATION_JSON)
+                        .content(json.writeValueAsString(request)))
+                .andExpect(jsonPath("$.code").value(0)).andExpect(jsonPath("$.data.userId").isString());
+        verify(service).updateProfile(1L, request);
+    }
+
+    @Test
+    void deletesUserThroughService() throws Exception {
+        mvc.perform(admin(delete("/api/v1/platform/users/1")))
+                .andExpect(jsonPath("$.code").value(0)).andExpect(jsonPath("$.data.userId").value("1"));
+        verify(service).delete(1L);
+    }
+
+    @Test
+    void reportsOrderGuardOnDelete() throws Exception {
+        doThrow(new BizException(ErrorCode.USER_HAS_ORDERS)).when(service).delete(1L);
+        mvc.perform(admin(delete("/api/v1/platform/users/1")))
+                .andExpect(jsonPath("$.code").value(60003)).andExpect(jsonPath("$.data").isEmpty());
+    }
+
     @ParameterizedTest
     @ValueSource(strings = {"USER", "MERCHANT_OWNER", "MERCHANT_STAFF", ""})
     void consoleAccessBlocksStudentsAndMerchantAccountsOnEveryEndpoint(String role) throws Exception {
@@ -187,13 +234,21 @@ class PlatformUserControllerTest {
         for (MockHttpServletRequestBuilder request : List.of(get("/api/v1/platform/users"),
                 get("/api/v1/platform/users/summary"), patch("/api/v1/platform/users/1/status")
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"status\":0,\"expectedStatus\":1,\"reason\":\"原因\"}"))) {
+                        .content("{\"status\":0,\"expectedStatus\":1,\"reason\":\"原因\"}"),
+                patch("/api/v1/platform/users/1/verify").contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"verifyStatus\":2,\"expectedVerifyStatus\":1}"),
+                patch("/api/v1/platform/users/1/profile").contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"college\":\"计算机学院\"}"),
+                delete("/api/v1/platform/users/1"))) {
             mvc.perform(request.header("Authorization", "Bearer " + token))
                     .andExpect(status().isForbidden()).andExpect(jsonPath("$.code").value(20003));
         }
         verify(service, never()).list(anyInt(), anyInt(), any(), any(), any());
         verify(service, never()).summary();
         verify(service, never()).changeStatus(any(), any());
+        verify(service, never()).auditVerify(any(), any());
+        verify(service, never()).updateProfile(any(), any());
+        verify(service, never()).delete(any());
     }
 
     @Test
@@ -217,7 +272,7 @@ class PlatformUserControllerTest {
 
     private PlatformUserDto.UserRow row() {
         return new PlatformUserDto.UserRow("9007199254740993", "小林", "林同学", "13800000000", "202611180001",
-                "计算机学院", "北校区", 1, 100, 5000000000L, 1, "",
+                "计算机学院", "北校区", "紫荆公寓 1 栋", 1, 100, 5000000000L, 1, "", "",
                 LocalDateTime.of(2026, 11, 18, 12, 0), null);
     }
 

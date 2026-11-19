@@ -34,10 +34,11 @@ public final class PlatformUserDto {
 
     @JsonInclude(JsonInclude.Include.ALWAYS)
     public record UserRow(String userId, String nickname, String realName, String phone,
-                          String studentNo, String college, String campusArea, Integer verifyStatus,
-                          Integer creditScore, @JsonSerialize(using = CountSerializer.class) long orderCount,
-                          Integer status, String forbiddenReason, LocalDateTime createdAt,
-                          LocalDateTime lastLoginAt) {
+                          String studentNo, String college, String campusArea, String dormBuilding,
+                          Integer verifyStatus, Integer creditScore,
+                          @JsonSerialize(using = CountSerializer.class) long orderCount,
+                          Integer status, String forbiddenReason, String verifyNote,
+                          LocalDateTime createdAt, LocalDateTime lastLoginAt) {
     }
 
     public record Summary(@JsonSerialize(using = CountSerializer.class) long total,
@@ -51,6 +52,22 @@ public final class PlatformUserDto {
                                 @Size(max = 255) String reason,
                                 @NotNull @Min(0) @Max(1)
                                 @JsonDeserialize(using = StatusDeserializer.class) Integer expectedStatus) {
+    }
+
+    public record VerifyRequest(@NotNull @Min(0) @Max(3)
+                                @JsonDeserialize(using = StatusDeserializer.class) Integer verifyStatus,
+                                @NotNull @Min(0) @Max(3)
+                                @JsonDeserialize(using = StatusDeserializer.class) Integer expectedVerifyStatus,
+                                @Size(max = 255) String reason) {
+    }
+
+    public record ProfileUpdateRequest(@Size(max = 64) String nickname,
+                                       @Size(max = 32) String realName,
+                                       @Size(max = 32) String studentNo,
+                                       @Size(max = 20) String phone,
+                                       @Size(max = 64) String college,
+                                       @Size(max = 64) String campusArea,
+                                       @Size(max = 64) String dormBuilding) {
     }
 
     public static final class StatusDeserializer extends JsonDeserializer<Integer> {

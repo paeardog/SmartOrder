@@ -54,7 +54,11 @@ public enum ErrorCode {
     PAYMENT_ALREADY_PAID(40005, "订单已支付"),
 
     CONFIG_NOT_FOUND(50001, "配置项不存在"),
-    CONFIG_INVALID(50002, "配置项取值不合法");
+    CONFIG_INVALID(50002, "配置项取值不合法"),
+
+    USER_PHONE_EXISTS(60001, "手机号已被其他用户使用"),
+    USER_STUDENT_NO_EXISTS(60002, "学号已被其他用户使用"),
+    USER_HAS_ORDERS(60003, "该用户存在订单记录，为保证对账请改用封禁");
 
     private final int code;
     private final String message;

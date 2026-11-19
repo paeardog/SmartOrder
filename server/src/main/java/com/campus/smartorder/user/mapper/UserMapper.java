@@ -34,4 +34,12 @@ public interface UserMapper extends BaseMapper<User> {
             """)
     int compareAndSetStatus(@Param("userId") Long userId, @Param("expectedStatus") int expectedStatus,
                             @Param("status") int status, @Param("reason") String reason);
+
+    @Update("""
+            UPDATE u_user
+               SET verify_status = #{status}, verify_note = #{note}, updated_at = NOW(3)
+             WHERE id = #{userId} AND verify_status = #{expectedStatus}
+            """)
+    int casVerifyStatus(@Param("userId") Long userId, @Param("expectedStatus") int expectedStatus,
+                        @Param("status") int status, @Param("note") String note);
 }
