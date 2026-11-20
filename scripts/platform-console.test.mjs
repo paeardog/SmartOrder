@@ -48,6 +48,49 @@ async function view(name, platform = {}, query = {}) {
   return { state, route, notices, guard: () => guard(), stop: () => scope.stop() };
 }
 
+function sparkBars(props) {
+  const filename = 'apps/console/src/components/SparkBars.vue';
+  const source = readFileSync(new URL(`../${filename}`, import.meta.url), 'utf8');
+  const { descriptor } = parse(source, { filename });
+  const script = compileScript(descriptor, { id: 'SparkBars' });
+  const { outputText } = ts.transpileModule(script.content, {
+    compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 },
+  });
+  const module = { exports: {} };
+  runInThisContext(`(function(require,module,exports){${outputText}\n})`, { filename })((id) => {
+    assert.equal(id, 'vue');
+    return vue;
+  }, module, module.exports);
+  return module.exports.default.setup(props, { expose() {} });
+}
+
+test('趋势图按日期显示金额并允许选择零值日', () => {
+  const s = sparkBars(vue.reactive({ values: [0, 12345], labels: ['2026-11-18', '2026-11-19'], formatValue: (value) => `¥${(value / 100).toFixed(2)}` }));
+  assert.equal(s.selected.value.label, '2026-11-19');
+  assert.equal(s.selected.value.value, '¥123.45');
+  s.activeIndex.value = 0;
+  assert.equal(s.selected.value.label, '2026-11-18');
+  assert.equal(s.selected.value.value, '¥0.00');
+  assert.equal(s.bars.value[0].height, '0%');
+  assert.equal(s.bars.value[1].height, '100%');
+});
+
+test('趋势图全零和空数据不出现无效高度，数据缩短后选中有效日期', () => {
+  const props = vue.reactive({ values: [0, 0], labels: ['2026-11-18', '2026-11-19'], formatValue: (value) => `${value} 单` });
+  const s = sparkBars(props);
+  assert.deepEqual(s.bars.value.map((bar) => bar.height), ['0%', '0%']);
+  assert.equal(s.selected.value.value, '0 单');
+  s.activeIndex.value = 1;
+  props.values = [3];
+  props.labels = ['2026-11-19'];
+  assert.equal(s.selected.value.label, '2026-11-19');
+  assert.equal(s.selected.value.value, '3 单');
+  props.values = [];
+  props.labels = [];
+  assert.equal(s.selected.value, undefined);
+  assert.deepEqual(s.bars.value, []);
+});
+
 const config = (key, value, type = 'INT') => ({ configKey: key, configValue: value, valueType: type, name: key, description: '', isPublic: false });
 
 test('配置校验拒绝小数整数、溢出、空 JSON、尾随 JSON 和越界业务值', async (t) => {

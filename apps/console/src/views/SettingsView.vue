@@ -114,7 +114,7 @@ async function submit(): Promise<void> {
 
 async function switchOpen(): Promise<void> {
   if (await toggleOpen()) {
-    toastOk(profile.value?.open ? "已恢复营业" : "已临时歇业");
+    toastOk(profile.value?.open ? "已恢复营业，今日有效" : "已临时歇业");
   } else {
     toastError(shop.error || "状态切换失败");
   }
@@ -191,9 +191,11 @@ onMounted(() => {
             <span class="so-field__hint">改动结算账号需要平台复核后才会生效</span>
           </label>
 
-          <button class="so-btn so-btn--primary" type="submit" :disabled="saving || filling">
-            {{ saving ? "保存中" : "保存档口信息" }}
-          </button>
+          <div class="settings-actions">
+            <button class="so-btn so-btn--primary" type="submit" :disabled="saving || filling">
+              {{ saving ? "保存中" : "保存档口信息" }}
+            </button>
+          </div>
         </form>
 
         <div style="display: flex; flex-direction: column; gap: 1rem">
@@ -206,7 +208,10 @@ onMounted(() => {
             </div>
             <div class="so-kv"><span class="so-kv__key">校区</span><span class="so-kv__val">{{ profile.campusArea }}</span></div>
             <div class="so-kv"><span class="so-kv__key">自提点</span><span class="so-kv__val">{{ profile.pickupPointName }}</span></div>
-            <div class="so-kv"><span class="so-kv__key">今日时段</span><span class="so-kv__val">{{ profile.openTime }} - {{ profile.closeTime }}</span></div>
+            <div class="so-kv">
+              <span class="so-kv__key">今日时段</span>
+              <span class="so-kv__val">{{ profile.open && profile.openTime === "00:00" && profile.closeTime === "00:00" ? "今日全天（至次日 00:00）" : `${profile.openTime} - ${profile.closeTime}` }}</span>
+            </div>
             <div class="so-kv"><span class="so-kv__key">歇业原因</span><span class="so-kv__val">{{ profile.closeReason || "-" }}</span></div>
             <div class="so-kv"><span class="so-kv__key">服务器时间</span><span class="so-kv__val">{{ profile.serverTime.slice(11, 19) }}</span></div>
             <button
@@ -241,3 +246,13 @@ onMounted(() => {
     </template>
   </div>
 </template>
+
+<style scoped>
+.settings-actions {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: 1rem;
+  padding-top: 1rem;
+  border-top: 1px solid var(--line-divider);
+}
+</style>

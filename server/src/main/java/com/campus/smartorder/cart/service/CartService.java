@@ -220,7 +220,7 @@ public class CartService {
             List<OptionSnapshot> chosen = entries.stream()
                     .filter(entry -> group.getId().equals(entry.groupId()))
                     .toList();
-            if (group.isRequired() && chosen.size() < group.minSelectOrZero()) {
+            if (group.requiresSelection() && chosen.size() < group.minSelectOrZero()) {
                 throw BizException.of(ErrorCode.DISH_OPTION_INVALID, group.getName() + " 至少选择 " + group.minSelectOrZero() + " 项");
             }
             if (chosen.size() > group.maxSelectOrFallback()) {

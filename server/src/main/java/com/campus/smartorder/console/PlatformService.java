@@ -18,6 +18,7 @@ import com.campus.smartorder.order.domain.OrderStatus;
 import com.campus.smartorder.order.mapper.OrderMapper;
 import com.campus.smartorder.system.domain.SysConfig;
 import com.campus.smartorder.system.mapper.SysConfigMapper;
+import com.campus.smartorder.system.service.CampusAreaService;
 import com.campus.smartorder.user.domain.PickupPoint;
 import com.campus.smartorder.user.mapper.PickupPointMapper;
 import com.fasterxml.jackson.core.JsonProcessingException;
@@ -30,7 +31,6 @@ import org.springframework.transaction.annotation.Transactional;
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
@@ -41,7 +41,6 @@ import java.util.stream.Collectors;
 @Service
 public class PlatformService {
 
-    private static final String CAMPUS_AREAS_KEY = "OPEN_CAMPUS_AREAS";
     private static final int MAX_CONFIG_VALUE_LENGTH = 1000;
     private static final Set<String> POSITIVE_INTEGER_KEYS = Set.of(
             "ORDER_PAY_TIMEOUT_SECONDS", "ORDER_AUTO_COMPLETE_MINUTES",
@@ -57,12 +56,13 @@ public class PlatformService {
     private final MerchantProfileService profileService;
     private final SmartOrderProperties properties;
     private final ObjectMapper objectMapper;
+    private final CampusAreaService campusAreaService;
 
     public PlatformService(PlatformMerchantService platformMerchantService, DishMapper dishMapper, OrderMapper orderMapper,
                            PickupPointMapper pickupPointMapper, SysConfigMapper configMapper,
                            OpenStateService openStateService, MerchantStatsService statsService,
                            MerchantProfileService profileService, SmartOrderProperties properties,
-                           ObjectMapper objectMapper) {
+                           ObjectMapper objectMapper, CampusAreaService campusAreaService) {
         this.platformMerchantService = platformMerchantService;
         this.dishMapper = dishMapper;
         this.orderMapper = orderMapper;
@@ -73,6 +73,7 @@ public class PlatformService {
         this.profileService = profileService;
         this.properties = properties;
         this.objectMapper = objectMapper;
+        this.campusAreaService = campusAreaService;
     }
 
     public PlatformDto.Overview overview() {
@@ -105,7 +106,7 @@ public class PlatformService {
                 serverTime, merchants.size(), open, pending, (int) dishTotal,
                 today.orderCount(), today.paidCount(), today.cancelCount(),
                 today.turnoverAmount(), today.netAmount(),
-                (int) readyOrders, (int) unpaidOrders, trend, campusAreas());
+                (int) readyOrders, (int) unpaidOrders, trend, campusAreaService.openAreas());
     }
 
     public List<PlatformDto.AuditRow> merchants(Integer status) {
@@ -268,17 +269,6 @@ public class PlatformService {
         }
         return pickupPointMapper.selectBatchIds(pointIds).stream()
                 .collect(Collectors.toMap(PickupPoint::getId, point -> point));
-    }
-
-    private List<String> campusAreas() {
-        SysConfig config = configMapper.selectByKey(CAMPUS_AREAS_KEY);
-        if (config == null || config.getConfigValue() == null || config.getConfigValue().isBlank()) {
-            return List.of();
-        }
-        return Arrays.stream(config.getConfigValue().split(","))
-                .map(String::trim)
-                .filter(part -> !part.isEmpty())
-                .toList();
     }
 
     private OpenStateService.State closedState() {

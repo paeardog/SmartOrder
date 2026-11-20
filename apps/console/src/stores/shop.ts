@@ -48,12 +48,20 @@ export function applyStatus(body: MerchantStatusUpdateRequest): Promise<boolean>
   return run(async () => merchant.status(body));
 }
 
-export function toggleOpen(): Promise<boolean> {
+export async function toggleOpen(): Promise<boolean> {
   const profile = shop.profile;
   if (!profile) {
-    return Promise.resolve(false);
+    return false;
   }
-  return applyStatus({ closed: profile.open, reason: profile.open ? "手动歇业" : "" });
+  const closed = profile.open;
+  if (!(await applyStatus({ closed, reason: closed ? "手动歇业" : "" }))) {
+    return false;
+  }
+  if (shop.profile?.open === closed) {
+    shop.error = shop.profile.closeReason || "营业状态未切换，请刷新后重试";
+    return false;
+  }
+  return true;
 }
 
 export function saveProfile(patch: MerchantProfileUpdateRequest): Promise<boolean> {

@@ -12,6 +12,7 @@ import com.campus.smartorder.merchant.service.PlatformMerchantService;
 import com.campus.smartorder.order.mapper.OrderMapper;
 import com.campus.smartorder.system.domain.SysConfig;
 import com.campus.smartorder.system.mapper.SysConfigMapper;
+import com.campus.smartorder.system.service.CampusAreaService;
 import com.campus.smartorder.user.mapper.PickupPointMapper;
 import com.fasterxml.jackson.databind.DeserializationFeature;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -45,7 +46,7 @@ class PlatformServiceTest {
     private final PlatformService service = new PlatformService(
             merchants, mock(DishMapper.class), orders, points, configs, openState,
             mock(MerchantStatsService.class), profiles,
-            new SmartOrderProperties("Asia/Shanghai", null, null, null, null), objectMapper);
+            new SmartOrderProperties("Asia/Shanghai", null, null, null, null), objectMapper, new CampusAreaService(configs));
     private SysConfig config;
 
     @BeforeEach

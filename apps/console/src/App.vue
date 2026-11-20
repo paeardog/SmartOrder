@@ -7,7 +7,7 @@ import ToastHost from "./components/ToastHost.vue";
 import { board, clearArrivals, startBoard, stopBoard, waitingCount } from "./stores/board";
 import { consoleStore, isMerchant, logout, signedIn } from "./stores/session";
 import { loadProfile, shop, toggleOpen } from "./stores/shop";
-import { toastOk } from "./stores/toasts";
+import { toastError, toastOk } from "./stores/toasts";
 import { enableNotifications, setSoundEnabled, setVolume, soundState } from "./utils/alerts";
 
 interface NavItem {
@@ -194,7 +194,9 @@ async function doLogout(): Promise<void> {
 
 async function switchOpen(): Promise<void> {
   if (await toggleOpen()) {
-    toastOk(shop.profile?.open ? "已恢复营业" : "已临时歇业");
+    toastOk(shop.profile?.open ? "已恢复营业，今日有效" : "已临时歇业");
+  } else {
+    toastError(shop.error || "状态切换失败");
   }
 }
 </script>

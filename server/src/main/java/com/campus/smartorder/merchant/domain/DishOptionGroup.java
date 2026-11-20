@@ -23,7 +23,7 @@ public class DishOptionGroup {
     private LocalDateTime createdAt;
     private LocalDateTime updatedAt;
 
-    public boolean isRequired() {
+    public boolean requiresSelection() {
         return required != null && required == 1;
     }
 

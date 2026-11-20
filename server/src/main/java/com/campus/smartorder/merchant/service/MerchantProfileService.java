@@ -1,6 +1,7 @@
 package com.campus.smartorder.merchant.service;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
+import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
 import com.campus.smartorder.common.api.BizException;
 import com.campus.smartorder.common.api.ErrorCode;
 import com.campus.smartorder.common.api.Ids;
@@ -179,32 +180,33 @@ public class MerchantProfileService {
 
     @Transactional
     public MerchantConsoleDto.Profile patchClosed(Long merchantId, boolean closed, String reason) {
+        Merchant merchant = require(merchantId);
+        if (!closed && !merchant.orderable()) {
+            throw new BizException(ErrorCode.MERCHANT_CLOSED, "档口当前状态不允许营业，请联系平台处理");
+        }
+        String text = closed ? (reason == null || reason.isBlank() ? DEFAULT_CLOSE_REASON : reason.trim()) : "";
+        if (text.length() > 128) {
+            throw new BizException(ErrorCode.INVALID_PARAM, "歇业原因太长了");
+        }
         LocalDate today = now().toLocalDate();
         DateOverride existing = overrideMapper.selectOne(new LambdaQueryWrapper<DateOverride>()
                 .eq(DateOverride::getMerchantId, merchantId)
                 .eq(DateOverride::getBizDate, today));
-
-        if (closed) {
-            String text = reason == null || reason.isBlank() ? DEFAULT_CLOSE_REASON : reason.trim();
-            if (text.length() > 128) {
-                throw new BizException(ErrorCode.INVALID_PARAM, "歇业原因太长了");
-            }
-            if (existing == null) {
-                DateOverride override = new DateOverride();
-                override.setMerchantId(merchantId);
-                override.setBizDate(today);
-                override.setOverrideType(DateOverride.TYPE_CLOSED);
-                override.setReason(text);
-                overrideMapper.insert(override);
-            } else {
-                existing.setOverrideType(DateOverride.TYPE_CLOSED);
-                existing.setOpenTime(null);
-                existing.setCloseTime(null);
-                existing.setReason(text);
-                overrideMapper.updateById(existing);
-            }
-        } else if (existing != null) {
-            overrideMapper.deleteById(existing.getId());
+        String type = closed ? DateOverride.TYPE_CLOSED : DateOverride.TYPE_OPEN;
+        if (existing == null) {
+            DateOverride override = new DateOverride();
+            override.setMerchantId(merchantId);
+            override.setBizDate(today);
+            override.setOverrideType(type);
+            override.setReason(text);
+            overrideMapper.insert(override);
+        } else {
+            overrideMapper.update(null, new LambdaUpdateWrapper<DateOverride>()
+                    .eq(DateOverride::getId, existing.getId())
+                    .set(DateOverride::getOverrideType, type)
+                    .set(DateOverride::getOpenTime, null)
+                    .set(DateOverride::getCloseTime, null)
+                    .set(DateOverride::getReason, text));
         }
         return profile(merchantId);
     }

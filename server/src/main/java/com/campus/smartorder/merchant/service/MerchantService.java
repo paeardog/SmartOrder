@@ -18,6 +18,7 @@ import com.campus.smartorder.merchant.mapper.DishOptionMapper;
 import com.campus.smartorder.merchant.mapper.DishStockMapper;
 import com.campus.smartorder.merchant.mapper.MenuCategoryMapper;
 import com.campus.smartorder.merchant.mapper.MerchantMapper;
+import com.campus.smartorder.system.service.CampusAreaService;
 import com.campus.smartorder.user.domain.PickupPoint;
 import com.campus.smartorder.user.mapper.PickupPointMapper;
 import org.springframework.stereotype.Service;
@@ -62,13 +63,14 @@ public class MerchantService {
     private final DishStockMapper stockMapper;
     private final PickupPointMapper pickupPointMapper;
     private final OpenStateService openStateService;
+    private final CampusAreaService campusAreaService;
     private final ZoneId zone;
 
     public MerchantService(MerchantMapper merchantMapper, DishMapper dishMapper,
                            MenuCategoryMapper categoryMapper, DishOptionGroupMapper optionGroupMapper,
                            DishOptionMapper optionMapper, DishStockMapper stockMapper,
                            PickupPointMapper pickupPointMapper, OpenStateService openStateService,
-                           SmartOrderProperties properties) {
+                           SmartOrderProperties properties, CampusAreaService campusAreaService) {
         this.merchantMapper = merchantMapper;
         this.dishMapper = dishMapper;
         this.categoryMapper = categoryMapper;
@@ -77,10 +79,15 @@ public class MerchantService {
         this.stockMapper = stockMapper;
         this.pickupPointMapper = pickupPointMapper;
         this.openStateService = openStateService;
+        this.campusAreaService = campusAreaService;
         this.zone = properties.zone();
     }
 
     public List<MerchantDto.Summary> listSummaries(String campusArea, Boolean openOnly) {
+        List<String> openAreas = campusAreaService.openAreas();
+        if (openAreas.isEmpty() || (isSet(campusArea) && !openAreas.contains(campusArea.trim()))) {
+            return List.of();
+        }
         LambdaQueryWrapper<Merchant> wrapper = new LambdaQueryWrapper<Merchant>()
                 .isNull(Merchant::getDeletedAt)
                 .in(Merchant::getStatus, List.of(Merchant.STATUS_OPEN, Merchant.STATUS_RESTING));
@@ -89,7 +96,9 @@ public class MerchantService {
         }
 
         List<Merchant> merchants = merchantMapper.selectList(wrapper.orderByDesc(Merchant::getSortWeight));
-        List<MerchantDto.Summary> summaries = toSummaries(merchants);
+        List<MerchantDto.Summary> summaries = toSummaries(merchants).stream()
+                .filter(summary -> openAreas.contains(summary.campusArea()))
+                .toList();
         if (Boolean.TRUE.equals(openOnly)) {
             summaries = summaries.stream().filter(MerchantDto.Summary::open).toList();
         }
@@ -170,6 +179,10 @@ public class MerchantService {
         if (keyword == null || keyword.isBlank()) {
             return List.of();
         }
+        List<String> openAreas = campusAreaService.openAreas();
+        if (openAreas.isEmpty() || (isSet(campusArea) && !openAreas.contains(campusArea.trim()))) {
+            return List.of();
+        }
         String like = keyword.trim();
 
         List<Dish> dishes = dishMapper.selectList(new LambdaQueryWrapper<Dish>()
@@ -195,7 +208,7 @@ public class MerchantService {
 
         for (Dish dish : dishes) {
             MerchantDto.Summary summary = summaries.get(dish.getMerchantId());
-            if (summary == null) {
+            if (summary == null || !openAreas.contains(summary.campusArea())) {
                 continue;
             }
             if (isSet(campusArea) && !campusArea.trim().equals(summary.campusArea())) {

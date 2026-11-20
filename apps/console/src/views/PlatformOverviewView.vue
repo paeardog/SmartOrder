@@ -88,7 +88,7 @@ onMounted(() => void load());
             <span class="so-card__title">全平台流水</span>
             <span class="so-field__hint">{{ formatYuan(turnoverSeries.reduce((a, b) => a + b, 0)) }}</span>
           </div>
-          <SparkBars :values="turnoverSeries" :labels="labels" />
+          <SparkBars :values="turnoverSeries" :labels="labels" label="全平台每日流水" :format-value="formatYuan" />
           <div class="axis">
             <span>{{ formatMonthDay(labels[0] ?? '') }}</span>
             <span>{{ formatMonthDay(labels[labels.length - 1] ?? '') }}</span>
@@ -99,7 +99,7 @@ onMounted(() => void load());
             <span class="so-card__title">全平台单量</span>
             <span class="so-field__hint">日均 {{ Math.round(orderSeries.reduce((a, b) => a + b, 0) / Math.max(1, orderSeries.length)) }} 单</span>
           </div>
-          <SparkBars :values="orderSeries" :labels="labels" />
+          <SparkBars :values="orderSeries" :labels="labels" label="全平台每日单量" :format-value="(value) => `${groupThousands(value)} 单`" />
           <div class="axis">
             <span>{{ formatMonthDay(labels[0] ?? '') }}</span>
             <span>{{ formatMonthDay(labels[labels.length - 1] ?? '') }}</span>

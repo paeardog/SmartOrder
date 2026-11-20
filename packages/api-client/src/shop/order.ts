@@ -1,5 +1,5 @@
 import { ORDER_STATUS_LABELS, formatCountdown, remainingMs } from "@smartorder/shared";
-import type { OrderDetail, OrderStatus } from "../types";
+import type { OrderDetail, OrderStatus, PreflightResult } from "../types";
 import { minutesToText } from "./format";
 
 export type OrderActionKey = "pay" | "cancel" | "review" | "reorder";
@@ -55,6 +55,18 @@ export function orderActions(
     default:
       return [REORDER];
   }
+}
+
+export function payTimeoutHint(preflight: Pick<PreflightResult, "serverTime" | "expireAt"> | null): string {
+  const seconds = preflight === null ? NaN
+    : Math.round((Date.parse(preflight.expireAt) - Date.parse(preflight.serverTime)) / 1000);
+  if (!Number.isFinite(seconds) || seconds <= 0) {
+    return "下单后请及时完成支付，支付时限以订单倒计时为准，超时订单会自动关闭。";
+  }
+  const minutes = Math.floor(seconds / 60);
+  const rest = seconds % 60;
+  const duration = [minutes > 0 ? `${minutes} 分钟` : "", rest > 0 ? `${rest} 秒` : ""].filter(Boolean).join(" ");
+  return `下单后请在 ${duration}内完成支付，超时订单会自动关闭。`;
 }
 
 export function payCountdownOf(detail: OrderDetail): { text: string; expired: boolean } {

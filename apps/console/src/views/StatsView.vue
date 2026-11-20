@@ -104,7 +104,7 @@ onMounted(() => void load());
             <span class="so-card__title">近 14 天流水</span>
             <span class="so-field__hint">{{ formatYuan(turnoverSeries.reduce((a, b) => a + b, 0)) }}</span>
           </div>
-          <SparkBars :values="turnoverSeries" :labels="dateLabels" />
+          <SparkBars :values="turnoverSeries" :labels="dateLabels" label="每日流水" :format-value="formatYuan" />
           <div class="axis">
             <span>{{ formatMonthDay(daily[0]?.bizDate ?? '') }}</span>
             <span>{{ formatMonthDay(daily[daily.length - 1]?.bizDate ?? '') }}</span>
@@ -115,7 +115,7 @@ onMounted(() => void load());
             <span class="so-card__title">近 14 天单量</span>
             <span class="so-field__hint">日均 {{ Math.round(orderSeries.reduce((a, b) => a + b, 0) / Math.max(1, orderSeries.length)) }} 单</span>
           </div>
-          <SparkBars :values="orderSeries" :labels="dateLabels" />
+          <SparkBars :values="orderSeries" :labels="dateLabels" label="每日单量" :format-value="(value) => `${groupThousands(value)} 单`" />
           <div class="axis">
             <span>{{ formatMonthDay(daily[0]?.bizDate ?? '') }}</span>
             <span>{{ formatMonthDay(daily[daily.length - 1]?.bizDate ?? '') }}</span>

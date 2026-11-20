@@ -908,7 +908,7 @@ export type OverrideType = "CLOSED" | "HOURS";
 
 export interface MerchantDateOverride {
   bizDate: string;
-  overrideType: OverrideType;
+  overrideType: OverrideType | "OPEN";
   openTime: string;
   closeTime: string;
   reason: string;

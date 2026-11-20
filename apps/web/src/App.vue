@@ -46,6 +46,16 @@ function go(name: string): void {
   void router.push({ name });
 }
 
+watch(
+  () => [route.name, route.query["q"]],
+  () => {
+    if (route.name === "search") {
+      keyword.value = typeof route.query["q"] === "string" ? route.query["q"] : "";
+    }
+  },
+  { immediate: true },
+);
+
 function submitSearch(): void {
   const text = keyword.value.trim();
   if (text === "") {

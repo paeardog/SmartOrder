@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted, ref, watch } from "vue";
+import { computed, ref, watch } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import { soldText, type MerchantSummary, type SearchHit } from "@smartorder/api-client";
 import { formatYuan } from "@smartorder/shared";
@@ -11,7 +11,6 @@ import { useCampusStore } from "../stores/campus";
 import {
   HOT_KEYWORDS,
   clearKeywords,
-  lastKeyword,
   recentKeywords,
   rememberKeyword,
   searchAll,
@@ -22,13 +21,12 @@ const route = useRoute();
 const router = useRouter();
 const campus = useCampusStore();
 
-const keyword = ref(lastKeyword());
+const keyword = computed(() => typeof route.query["q"] === "string" ? route.query["q"] : "");
 const recent = ref<string[]>(recentKeywords());
 const result = ref<SearchQueryResult>({ dishes: [], stores: [], offline: false });
 const searching = ref(false);
 const touched = ref(false);
 
-let timer: number | null = null;
 let seq = 0;
 
 const hasResult = computed(() => result.value.dishes.length > 0 || result.value.stores.length > 0);
@@ -36,12 +34,13 @@ const showHint = computed(() => keyword.value.trim() === "" && !touched.value);
 
 async function run(text: string): Promise<void> {
   const needle = text.trim();
+  const current = ++seq;
   if (needle === "") {
     result.value = { dishes: [], stores: [], offline: false };
     touched.value = false;
+    searching.value = false;
     return;
   }
-  const current = ++seq;
   searching.value = true;
   touched.value = true;
   try {
@@ -62,26 +61,8 @@ async function run(text: string): Promise<void> {
   }
 }
 
-function schedule(text: string): void {
-  if (timer !== null) {
-    window.clearTimeout(timer);
-  }
-  timer = window.setTimeout(() => {
-    void run(text);
-  }, 260);
-}
-
-function submit(text: string): void {
-  if (text.trim() === "") {
-    return;
-  }
-  void router.replace({ name: "search", query: { q: text.trim() } });
-  void run(text);
-}
-
 function useWord(word: string): void {
-  keyword.value = word;
-  submit(word);
+  void router.replace({ name: "search", query: { q: word } });
 }
 
 function openDish(hit: SearchHit): void {
@@ -98,33 +79,10 @@ function clearRecent(): void {
 }
 
 watch(
-  () => route.query["q"],
-  (value) => {
-    if (typeof value === "string" && value !== "") {
-      keyword.value = value;
-      void run(value);
-    }
-  },
+  [keyword, () => campus.area],
+  () => void run(keyword.value),
+  { immediate: true },
 );
-
-watch(keyword, (value) => schedule(value));
-
-watch(
-  () => campus.area,
-  () => {
-    if (keyword.value.trim() !== "") {
-      void run(keyword.value);
-    }
-  },
-);
-
-onMounted(() => {
-  const value = route.query["q"];
-  if (typeof value === "string" && value !== "") {
-    keyword.value = value;
-    void run(value);
-  }
-});
 </script>
 
 <template>
@@ -135,12 +93,6 @@ onMounted(() => {
         <p class="so-page-subtitle">按菜名、档口名或口味标签搜索，支持拼音首字母</p>
       </div>
     </header>
-
-    <div class="so-searchbox" style="width: 100%; padding: 0.75rem 1rem; margin-bottom: 1.5rem">
-      <AppIcon name="search" :size="18" />
-      <input v-model="keyword" type="search" placeholder="想吃点什么" @keyup.enter="submit(keyword)" />
-      <button type="button" class="so-btn so-btn--primary so-btn--sm" @click="submit(keyword)">搜索</button>
-    </div>
 
     <section v-if="showHint" class="so-card">
       <div class="so-card__header">

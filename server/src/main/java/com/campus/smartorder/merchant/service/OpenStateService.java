@@ -102,6 +102,11 @@ public class OpenStateService {
         } else if (override != null && DateOverride.TYPE_OPEN.equals(override.getOverrideType())) {
             open = true;
             reason = "";
+            closedToday = false;
+            openTime = DEFAULT_OPEN;
+            closeTime = DEFAULT_CLOSE;
+            acceptStart = openTime;
+            acceptEnd = closeTime;
         } else if (closedToday) {
             open = false;
             reason = "今日休息";

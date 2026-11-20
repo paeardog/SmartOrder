@@ -4,6 +4,7 @@ import type { MerchantHoursInput, MerchantHoursResponse, OverrideType } from "@s
 import { ApiError, merchant } from "@smartorder/api-client";
 import { campusToday, campusWeekday, formatClock, minutesFromText } from "@smartorder/shared";
 import { toastError, toastOk } from "../stores/toasts";
+import { loadProfile } from "../stores/shop";
 
 const data = ref<MerchantHoursResponse | null>(null);
 const loading = ref(false);
@@ -89,7 +90,7 @@ async function save(): Promise<void> {
   saving.value = true;
   try {
     data.value = await merchant.saveHours({ rows: rows.value });
-    await load();
+    await Promise.all([load(), loadProfile()]);
     toastOk("营业时段已保存");
   } catch (caught) {
     toastError(caught instanceof ApiError ? caught.message : "营业时段保存失败");
@@ -112,7 +113,7 @@ async function addOverride(): Promise<void> {
       reason: overrideReason.value.trim(),
     });
     overrideReason.value = "";
-    await load();
+    await Promise.all([load(), loadProfile()]);
     toastOk("特殊安排已生效");
   } catch (caught) {
     toastError(caught instanceof ApiError ? caught.message : "特殊安排保存失败");
@@ -122,7 +123,7 @@ async function addOverride(): Promise<void> {
 async function dropOverride(bizDate: string): Promise<void> {
   try {
     data.value = await merchant.removeOverride(bizDate);
-    await load();
+    await Promise.all([load(), loadProfile()]);
     toastOk("已删除该日安排");
   } catch (caught) {
     toastError(caught instanceof ApiError ? caught.message : "删除失败");
@@ -231,11 +232,11 @@ onMounted(() => void load());
                 <td>{{ item.bizDate }}</td>
                 <td>
                   <span class="so-tag" :class="item.overrideType === 'CLOSED' ? 'so-tag--danger' : 'so-tag--info'">
-                    {{ item.overrideType === "CLOSED" ? "整天歇业" : "改时段" }}
+                    {{ item.overrideType === "CLOSED" ? "整天歇业" : item.overrideType === "OPEN" ? "临时营业" : "改时段" }}
                   </span>
                 </td>
                 <td class="so-cell--num">
-                  {{ item.overrideType === "CLOSED" ? "-" : `${formatClock(`${item.bizDate}T${item.openTime}`)} - ${formatClock(`${item.bizDate}T${item.closeTime}`)}` }}
+                  {{ item.overrideType === "HOURS" ? `${formatClock(`${item.bizDate}T${item.openTime}`)} - ${formatClock(`${item.bizDate}T${item.closeTime}`)}` : item.overrideType === "OPEN" ? "当日有效" : "-" }}
                 </td>
                 <td class="so-order__opt">{{ item.reason || "-" }}</td>
                 <td class="so-cell--act">

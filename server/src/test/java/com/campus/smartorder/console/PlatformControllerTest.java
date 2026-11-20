@@ -13,6 +13,7 @@ import com.campus.smartorder.merchant.service.OpenStateService;
 import com.campus.smartorder.merchant.service.PlatformMerchantService;
 import com.campus.smartorder.order.mapper.OrderMapper;
 import com.campus.smartorder.system.mapper.SysConfigMapper;
+import com.campus.smartorder.system.service.CampusAreaService;
 import com.campus.smartorder.user.mapper.PickupPointMapper;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.BeforeEach;
@@ -46,7 +47,7 @@ class PlatformControllerTest {
         PlatformService service = new PlatformService(new PlatformMerchantService(merchants, profiles),
                 mock(DishMapper.class), mock(OrderMapper.class), mock(PickupPointMapper.class),
                 mock(SysConfigMapper.class), openState, mock(MerchantStatsService.class), profiles,
-                new SmartOrderProperties("Asia/Shanghai", null, null, null, null), new ObjectMapper());
+                new SmartOrderProperties("Asia/Shanghai", null, null, null, null), new ObjectMapper(), mock(CampusAreaService.class));
         mvc = MockMvcBuilders.standaloneSetup(new PlatformController(service))
                 .setControllerAdvice(new GlobalExceptionHandler()).build();
         merchant = new Merchant();

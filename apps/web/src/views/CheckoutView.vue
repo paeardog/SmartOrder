@@ -8,6 +8,7 @@ import {
   couponRuleText,
   minutesToText,
   orders as ordersApi,
+  payTimeoutHint,
   yuanText,
   type CouponEval,
   type MerchantSummary,
@@ -67,6 +68,7 @@ const deliveryFee = computed(() => (mode.value === "DELIVERY" ? (preflight.value
 const discount = computed(() => preflight.value?.discountAmount ?? 0);
 const payAmount = computed(() => itemAmount.value + packFee.value + deliveryFee.value - discount.value);
 const gap = computed(() => preflight.value?.gapToMinimum ?? group.value?.gapToMinimum ?? 0);
+const paymentHint = computed(() => payTimeoutHint(preflight.value));
 
 const couponContext = computed(() => ({
   merchantId: group.value?.merchantId ?? "",
@@ -465,7 +467,7 @@ onMounted(() => {
           </section>
 
           <section class="so-card">
-            <p class="so-hint">下单后请在 15 分钟内完成支付，超时订单会自动关闭。</p>
+            <p class="so-hint">{{ paymentHint }}</p>
             <p v-if="blocking !== ''" class="so-hint" style="margin-top: 0.5rem">{{ blocking }}</p>
             <button
               class="so-btn so-btn--primary so-btn--block so-btn--lg"
