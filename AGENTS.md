@@ -7,6 +7,7 @@
 ```
 db/                 数据库真源。schema.sql（34 张表建库脚本）、seed.sql（示例数据）、
                     tests/（19 个约束与索引行为测试，跑在真实 MySQL 上）
+backups/            数据库备份目录，完整库转储按时间戳命名，如 smartorder_20261118_115649.sql
 scripts/            Node 脚本：check-schema.mjs 静态校验、run-db-tests.mjs 行为测试、
                     gen-flyway.mjs 由 schema.sql 生成 Flyway 基线
 server/             Spring Boot 3.2.5 / Java 17 后端，MyBatis-Plus + Flyway + JJWT，无 Spring Security
@@ -59,6 +60,6 @@ start.bat / start.bat reset / stop / check Windows 下的整体引导与收尾
 
 开发机是 Windows。**非必要不要改动 start.bat / stop.bat**：这两个脚本承担了工具链下载、建库、起停服务的全部引导逻辑，行为已验证过，改坏了整个一键流程都不可用。用户明确要求改、或改动本身就是围绕启动流程的任务时才动它们。
 
-工具链（JDK 17、Maven、Node 22、便携 MySQL 8.0.40）由 start.bat 自动下载进 `.tools/`，已 gitignore；便携 MySQL 监听 3307，密码可用 `DB_PASS` 覆盖。后端日志在 `.tools/backend.log`，前端在 `.tools/web.log`。Python 用 miniconda 的，跑脚本前设 `PYTHONUTF8=1`；PowerShell 输出可能是 UTF-16，管道处理前先转码；shell 脚本注意 CRLF。
+工具链（JDK 17、Maven、Node 22、便携 MySQL 8.0.40）由 start.bat 自动下载进 `.tools/`，已 gitignore；便携 MySQL 监听 3307，密码可用 `DB_PASS` 覆盖，数据文件在 `.tools/mysqldata/`，binlog 开启。数据库备份放在项目根目录的 `/backups/`（如 `smartorder_20261118_115649.sql`），是完整库转储。后端日志在 `.tools/backend.log`，前端在 `.tools/web.log`。Python 用 miniconda 的，跑脚本前设 `PYTHONUTF8=1`；PowerShell 输出可能是 UTF-16，管道处理前先转码；shell 脚本注意 CRLF。
 
 实时推送走 `GET /api/v1/events/stream?token=`，ACCOUNT 主体订商家维度、USER 订个人维度，看板断线自动降级 3 秒轮询。`/auth/refresh` 两种主体都支持，账号 refresh token 是无状态 JWT，不落 u_auth_token（该表外键指向 u_user）。后端改 Java 代码必须重启才生效；三个前端是 Vite dev server，热更新即可，不要顺手重启用户已起好的服务。
