@@ -133,7 +133,7 @@ onMounted(() => {
   <div class="so-layout">
     <aside v-if="!bare" class="so-sidebar">
       <header class="so-sidebar__header">
-        <p class="so-sidebar__logo">校园点单</p>
+        <router-link to="/" class="so-sidebar__logo" aria-label="校园点单首页"><AppIcon name="bag" :size="24" /><span>校园点单</span></router-link>
       </header>
       <nav class="so-sidebar__nav">
         <button
@@ -142,6 +142,8 @@ onMounted(() => {
           type="button"
           class="so-nav-item"
           :class="{ 'so-nav-item--active': activeName === item.name }"
+          :aria-label="item.label"
+          :aria-current="activeName === item.name ? 'page' : undefined"
           @click="go(item.name)"
         >
           <span class="so-nav-item__icon"><AppIcon :name="item.icon" :size="18" /></span>
@@ -156,7 +158,7 @@ onMounted(() => {
       <header v-if="!bare" class="so-topbar">
         <label class="so-searchbox">
           <AppIcon name="search" :size="16" />
-          <input v-model="keyword" type="search" placeholder="搜菜品、档口" @keyup.enter="submitSearch" />
+          <input v-model="keyword" type="search" placeholder="搜菜品、档口" aria-label="搜索菜品或档口" @keyup.enter="submitSearch" />
         </label>
         <span class="so-topbar__grow" />
         <select

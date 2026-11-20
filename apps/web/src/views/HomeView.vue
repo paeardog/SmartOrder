@@ -1,12 +1,13 @@
 <script setup lang="ts">
 import { computed, onMounted, ref, watch } from "vue";
 import { useRouter } from "vue-router";
-import { catalog, type MerchantSummary, type PickupPoint } from "@smartorder/api-client";
+import { catalog, type DishSummary, type MerchantSummary, type PickupPoint } from "@smartorder/api-client";
 import { formatYuan } from "@smartorder/shared";
 import AppIcon from "../components/AppIcon.vue";
 import EmptyState from "../components/EmptyState.vue";
 import MerchantCard from "../components/MerchantCard.vue";
 import StatusTag from "../components/StatusTag.vue";
+import SoImage from "../components/SoImage.vue";
 import { useCartStore } from "../stores/cart";
 import { useCampusStore } from "../stores/campus";
 import { useOrderStore } from "../stores/orders";
@@ -23,6 +24,8 @@ const points = ref<PickupPoint[]>([]);
 const loading = ref(true);
 const category = ref("");
 const closedOpen = ref(false);
+const featured = ref<{ merchant: MerchantSummary; dish: DishSummary }[]>([]);
+let loadSequence = 0;
 
 const greeting = computed(() => {
   const hour = new Date().getHours();
@@ -56,19 +59,46 @@ const categories = computed(() => {
 const activeOrders = computed(() => orders.active);
 
 async function load(): Promise<void> {
+  const current = ++loadSequence;
   loading.value = true;
+  featured.value = [];
   try {
     const [list, pickup] = await Promise.all([
       catalog.merchants(campus.area === "" ? undefined : campus.area, false),
       catalog.pickupPoints(campus.area === "" ? undefined : campus.area),
     ]);
+    if (current !== loadSequence) return;
     merchants.value = list;
     points.value = pickup;
+    void loadFeatured(list, current);
   } catch (error) {
-    reportError(error);
+    if (current === loadSequence) reportError(error);
   } finally {
-    loading.value = false;
+    if (current === loadSequence) loading.value = false;
   }
+}
+
+async function loadFeatured(list: MerchantSummary[], current: number): Promise<void> {
+  const candidates = list.filter((item) => item.open && item.logoUrl).sort((a, b) => b.monthSold - a.monthSold);
+  const covers = await Promise.all(candidates.map(async (item) => await imageReady(item.logoUrl) ? item : null));
+  if (current !== loadSequence) return;
+  const available = covers.filter((item): item is MerchantSummary => item !== null);
+  const selected = available.filter((item, index) => available.findIndex((other) => other.categoryName === item.categoryName) === index).slice(0, 4);
+  const results = await Promise.allSettled(selected.map(async (merchant) => {
+    const menu = await catalog.menu(merchant.merchantId);
+    const dish = menu.categories.flatMap((row) => row.dishes)
+      .filter((item) => item.imageUrl && !item.stock.soldOut)
+      .sort((a, b) => b.monthSold - a.monthSold)[0];
+    return dish && menu.merchant.open && await imageReady(dish.imageUrl) ? { merchant: menu.merchant, dish } : null;
+  }));
+  if (current !== loadSequence) return;
+  featured.value = results.flatMap((result) => result.status === "fulfilled" && result.value ? [result.value] : []);
+}
+
+async function imageReady(src: string): Promise<boolean> {
+  const image = new Image();
+  image.src = src;
+  return image.decode().then(() => true, () => false);
 }
 
 function toggleCategory(name: string): void {
@@ -97,7 +127,7 @@ onMounted(() => {
 </script>
 
 <template>
-  <div class="so-page">
+  <div class="so-page home-page">
     <header class="so-page-header">
       <div>
         <h1 class="so-page-title">{{ greeting }}</h1>
@@ -133,6 +163,31 @@ onMounted(() => {
       </div>
     </section>
 
+    <section v-if="featured.length > 0" class="home-featured" aria-label="店内人气菜品">
+      <div class="so-section-title">
+        <h2 class="so-section-title__text">今天吃点好的</h2>
+        <span class="so-hint">来自营业中的档口</span>
+      </div>
+      <div class="so-result-grid">
+        <router-link
+          v-for="item in featured"
+          :key="item.dish.dishId"
+          class="so-dish so-food-card home-featured__link"
+          :to="{ name: 'merchant', params: { id: item.merchant.merchantId }, query: { dish: item.dish.dishId } }"
+        >
+          <SoImage :src="item.dish.imageUrl" :alt="item.dish.name" img-class="so-dish__image" />
+          <div class="so-dish__body">
+            <h3 class="so-dish__name">{{ item.dish.name }}</h3>
+            <p class="so-dish__sub">{{ item.merchant.name }}</p>
+            <div class="so-dish__foot">
+              <span class="so-price">{{ formatYuan(item.dish.basePrice) }}</span>
+              <span class="so-food-card__action">去点餐 <AppIcon name="arrow" :size="14" /></span>
+            </div>
+          </div>
+        </router-link>
+      </div>
+    </section>
+
     <div class="so-section-title">
       <h2 class="so-section-title__text">附近好店</h2>
       <button type="button" class="so-btn so-btn--ghost so-btn--sm" :disabled="loading" @click="load">
@@ -141,7 +196,8 @@ onMounted(() => {
       </button>
     </div>
 
-    <div class="so-chips" style="margin-bottom: 1.5rem">
+    <div class="so-chips" style="margin-bottom: 1.5rem" aria-label="档口分类">
+      <button type="button" class="so-chip" :class="{ 'so-chip--active': category === '' }" :aria-pressed="category === ''" @click="category = ''">全部口味</button>
       <button
         v-for="item in categories"
         :key="item.name"

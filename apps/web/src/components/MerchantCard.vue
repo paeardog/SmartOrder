@@ -62,13 +62,15 @@ async function toggleFav(event: MouseEvent): Promise<void> {
     >
       <AppIcon name="heart" :size="18" />
     </button>
-    <SoImage :src="merchant.logoUrl" :alt="merchant.name" img-class="so-merchant-card__image" icon="store" />
+    <div class="so-merchant-card__cover">
+      <SoImage :src="merchant.logoUrl" :alt="merchant.name" img-class="so-merchant-card__image" icon="store" />
+      <span class="so-merchant-card__state"><span class="so-status-dot" :class="dotClass" />{{ stateText }}</span>
+    </div>
     <div class="so-merchant-card__body">
-      <p class="so-merchant-card__name">{{ merchant.name }}</p>
+      <router-link class="so-merchant-card__name" :to="{ name: 'merchant', params: { id: merchant.merchantId } }" @click.stop>{{ merchant.name }}</router-link>
       <p class="so-merchant-card__meta">
         <span>{{ merchant.categoryName }}</span>
-        <span>起送 ¥{{ formatMoneyShort(merchant.minOrderAmount) }}</span>
-        <span>约 {{ minutesToText(merchant.avgPrepareMinutes) }}</span>
+        <span>{{ merchant.pickupPointName }}</span>
       </p>
       <div class="so-merchant-card__stats">
         <span class="so-merchant-card__stat">月售 {{ soldText(merchant.monthSold) }}</span>
@@ -80,7 +82,10 @@ async function toggleFav(event: MouseEvent): Promise<void> {
           评分 {{ rating }}
           <template v-if="merchant.ratingCount > 0"> · {{ merchant.ratingCount }}</template>
         </button>
-        <span class="so-merchant-card__stat"><span class="so-status-dot" :class="dotClass" />{{ stateText }}</span>
+      </div>
+      <div class="so-merchant-card__footer">
+        <span>{{ merchant.minOrderAmount > 0 ? `¥${formatMoneyShort(merchant.minOrderAmount)} 起订` : '不限起订金额' }}</span>
+        <span class="so-merchant-card__stat"><AppIcon name="clock" :size="14" />约 {{ minutesToText(merchant.avgPrepareMinutes) }}出餐</span>
       </div>
     </div>
   </article>

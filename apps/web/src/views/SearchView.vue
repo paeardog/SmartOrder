@@ -132,10 +132,10 @@ watch(
             <h2 class="so-section-title__text">菜品 {{ result.dishes.length }}</h2>
           </div>
           <div class="so-result-grid">
-            <article v-for="hit in result.dishes" :key="hit.dish.dishId" class="so-dish" @click="openDish(hit)" style="cursor: pointer">
+            <article v-for="hit in result.dishes" :key="hit.dish.dishId" class="so-dish so-food-card" @click="openDish(hit)" style="cursor: pointer">
               <SoImage :src="hit.dish.imageUrl" :alt="hit.dish.name" img-class="so-dish__image" />
               <div class="so-dish__body">
-                <p class="so-dish__name">{{ hit.dish.name }}</p>
+                <router-link class="so-dish__name so-food-card__link" :to="{ name: 'merchant', params: { id: hit.merchantId }, query: { dish: hit.dish.dishId } }" @click.stop>{{ hit.dish.name }}</router-link>
                 <p class="so-dish__sub">{{ hit.merchantName }} · {{ hit.categoryName }}</p>
                 <div class="so-dish__foot">
                   <span class="so-price">{{ formatYuan(hit.dish.basePrice) }}</span>

@@ -403,8 +403,8 @@ watch(merchantId, () => {
 });
 
 watch(
-  () => route.query["dish"],
-  (value) => {
+  [() => route.query["dish"], () => menu.value !== null],
+  ([value]) => {
     if (typeof value !== "string" || value === "") {
       return;
     }
@@ -447,7 +447,7 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-  <div class="so-page">
+  <div class="so-page menu-page">
     <div v-if="loading && menu === null" class="so-loading"><span class="so-spinner" />正在加载菜单</div>
 
     <EmptyState v-else-if="failed !== ''" icon="warning" title="菜单没能加载出来" :hint="failed">
@@ -536,73 +536,75 @@ onBeforeUnmount(() => {
 
         <div class="so-dish-list">
           <template v-if="visibleCategories.length > 0">
-            <section v-for="category in visibleCategories" :key="category.categoryId" style="margin-bottom: 1.5rem">
+            <section v-for="category in visibleCategories" :key="category.categoryId" class="so-menu-section" style="margin-bottom: 1.5rem">
               <div class="so-section-title">
                 <h2 class="so-section-title__text">{{ category.name }}</h2>
                 <span class="so-hint">{{ category.dishes.length }} 款</span>
               </div>
-              <article
-                v-for="dish in category.dishes"
-                :key="dish.dishId"
-                class="so-card so-dish"
-                :class="{ 'so-dish--off': dish.stock.soldOut, 'so-dish--highlight': highlight === dish.dishId }"
-              >
-                <div class="so-dish__thumb">
-                  <SoImage :src="dish.imageUrl" :alt="dish.name" img-class="so-dish__image" />
-                  <button
-                    type="button"
-                    class="so-dish__fav"
-                    :class="{ 'is-on': favorites.isDish(dish.dishId) }"
-                    aria-label="收藏菜品"
-                    @click.stop="toggleDishFav(dish)"
-                  >
-                    <AppIcon name="heart" :size="16" />
-                  </button>
-                </div>
-                <div class="so-dish__body">
-                  <p class="so-dish__name">
-                    {{ dish.name }}
-                    <span v-if="dish.recommended" class="so-tag so-tag--primary">推荐</span>
-                  </p>
-                  <p v-if="dish.subtitle !== ''" class="so-dish__sub">{{ dish.subtitle }}</p>
-                  <div v-if="dish.tags.length > 0" class="so-dish__tags">
-                    <span v-for="tag in dish.tags" :key="tag" class="so-tag so-tag--muted">{{ tag }}</span>
-                  </div>
-                  <p v-if="noteOfLine(dish) !== ''" class="so-hint">备注：{{ noteOfLine(dish) }}</p>
-                  <div class="so-dish__foot">
-                    <span class="so-price"><span class="so-price__unit">¥</span>{{ formatMoneyShort(dish.basePrice) }}</span>
-                    <span v-if="remainingText(dish) !== ''" class="so-hint">{{ remainingText(dish) }}</span>
-                    <div class="so-grow" />
-                    <SoStepper
-                      v-if="dish.groups.length === 0"
-                      :value="lineCount(dish)"
-                      :min="0"
-                      :max="maxOf(dish)"
-                      :busy="busyDishId === dish.dishId"
-                      :disabled="dish.stock.soldOut || !merchant.open"
-                      @change="
-                        (next) => {
-                          const line = cart.lineOf(dish.dishId, 'plain');
-                          if (line !== null) {
-                            void changeLine(line, next);
-                          } else if (next > 0) {
-                            void addDish(dish);
-                          }
-                        }
-                      "
-                    />
+              <div class="so-menu-grid">
+                <article
+                  v-for="dish in category.dishes"
+                  :key="dish.dishId"
+                  class="so-card so-dish"
+                  :class="{ 'so-dish--off': dish.stock.soldOut, 'so-dish--highlight': highlight === dish.dishId }"
+                >
+                  <div class="so-dish__thumb">
+                    <SoImage :src="dish.imageUrl" :alt="dish.name" img-class="so-dish__image" />
                     <button
-                      v-else
-                      class="so-btn so-btn--primary so-btn--sm"
                       type="button"
-                      :disabled="dish.stock.soldOut || !merchant.open"
-                      @click="openSku(dish)"
+                      class="so-dish__fav"
+                      :class="{ 'is-on': favorites.isDish(dish.dishId) }"
+                      aria-label="收藏菜品"
+                      @click.stop="toggleDishFav(dish)"
                     >
-                      {{ lineCount(dish) > 0 ? `已选 ${lineCount(dish)} 份` : isMultiSpec(dish) ? "选规格" : "加入购物车" }}
+                      <AppIcon name="heart" :size="16" />
                     </button>
                   </div>
-                </div>
-              </article>
+                  <div class="so-dish__body">
+                    <p class="so-dish__name">
+                      {{ dish.name }}
+                      <span v-if="dish.recommended" class="so-tag so-tag--primary">推荐</span>
+                    </p>
+                    <p v-if="dish.subtitle !== ''" class="so-dish__sub">{{ dish.subtitle }}</p>
+                    <div v-if="dish.tags.length > 0" class="so-dish__tags">
+                      <span v-for="tag in dish.tags" :key="tag" class="so-tag so-tag--muted">{{ tag }}</span>
+                    </div>
+                    <p v-if="noteOfLine(dish) !== ''" class="so-hint">备注：{{ noteOfLine(dish) }}</p>
+                    <div class="so-dish__foot">
+                      <span class="so-price"><span class="so-price__unit">¥</span>{{ formatMoneyShort(dish.basePrice) }}</span>
+                      <span v-if="remainingText(dish) !== ''" class="so-hint">{{ remainingText(dish) }}</span>
+                      <div class="so-grow" />
+                      <SoStepper
+                        v-if="dish.groups.length === 0"
+                        :value="lineCount(dish)"
+                        :min="0"
+                        :max="maxOf(dish)"
+                        :busy="busyDishId === dish.dishId"
+                        :disabled="dish.stock.soldOut || !merchant.open"
+                        @change="
+                          (next) => {
+                            const line = cart.lineOf(dish.dishId, 'plain');
+                            if (line !== null) {
+                              void changeLine(line, next);
+                            } else if (next > 0) {
+                              void addDish(dish);
+                            }
+                          }
+                        "
+                      />
+                      <button
+                        v-else
+                        class="so-btn so-btn--primary so-btn--sm"
+                        type="button"
+                        :disabled="dish.stock.soldOut || !merchant.open"
+                        @click="openSku(dish)"
+                      >
+                        {{ lineCount(dish) > 0 ? `已选 ${lineCount(dish)} 份` : isMultiSpec(dish) ? "选规格" : "加入购物车" }}
+                      </button>
+                    </div>
+                  </div>
+                </article>
+              </div>
             </section>
           </template>
           <EmptyState v-else icon="search" title="没有找到这道菜" hint="换个关键词试试" />
