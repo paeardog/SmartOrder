@@ -3,6 +3,7 @@ import { computed, onMounted, ref, watch } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import { notices as noticesApi } from "@smartorder/api-client";
 import AppIcon from "./components/AppIcon.vue";
+import SoImage from "./components/SoImage.vue";
 import ToastHost from "./components/ToastHost.vue";
 import { useCartStore } from "./stores/cart";
 import { useCampusStore } from "./stores/campus";
@@ -32,6 +33,7 @@ const navItems = [
   { name: "cart", label: "购物车", icon: "cart" },
   { name: "orders", label: "我的订单", icon: "receipt" },
   { name: "favorites", label: "我的收藏", icon: "heart" },
+  { name: "my-reviews", label: "我的评价", icon: "comment" },
   { name: "coupons", label: "优惠券", icon: "ticket" },
   { name: "notices", label: "消息通知", icon: "bell" },
   { name: "profile", label: "我的", icon: "user" },
@@ -180,7 +182,10 @@ onMounted(() => {
           <span v-if="cart.itemCount > 0" class="so-badge" style="position: absolute; transform: translate(12px, -12px)">{{ cart.itemCount }}</span>
         </button>
         <button v-if="signedIn" type="button" class="so-btn so-btn--ghost so-btn--sm" @click="go('profile')">
-          <span class="so-avatar">{{ initial }}</span>
+          <span class="so-avatar">
+            <SoImage v-if="tokenStore.profile?.avatarUrl" :src="tokenStore.profile.avatarUrl" alt="我的头像" img-class="so-avatar__image" icon="user" />
+            <span v-else>{{ initial }}</span>
+          </span>
           {{ nickname }}
         </button>
         <button v-else type="button" class="so-btn so-btn--primary so-btn--sm" @click="go('login')">登录</button>

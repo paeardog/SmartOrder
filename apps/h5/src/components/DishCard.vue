@@ -1,6 +1,6 @@
 <template>
-  <article :class="['dish', { 'dish--off': !saleable }]">
-    <div role="button" class="dish__media" @click="openSheet">
+  <article :class="['dish', { 'dish--off': !saleable }]" @click="openDetail">
+    <div role="button" tabindex="0" :aria-label="`查看${dish.name}详情`" class="dish__media" @click.stop="openDetail" @keydown.enter.self.prevent="openDetail" @keydown.space.self.prevent="openDetail">
       <ArtImage :src="dish.imageUrl" :name="dish.name" radius="14px" />
       <span v-if="!saleable" class="dish__stamp">{{ soldOutLabel }}</span>
       <span v-else-if="lowStock" class="dish__flag dish__flag--warn">仅剩 {{ remaining }} 份</span>
@@ -17,7 +17,7 @@
     </div>
 
     <div class="dish__main">
-      <button type="button" class="dish__info" @click="openSheet">
+      <button type="button" class="dish__info" @click.stop="openDetail">
         <span class="dish__name">
           <i v-for="(part, index) in nameParts" :key="`${index}-${part.text}`" :class="{ 'is-hit': part.hit }">{{ part.text }}</i>
         </span>
@@ -41,7 +41,7 @@
           <span v-if="hasVariant" class="dish__from">起</span>
         </div>
 
-        <div v-if="quantity > 0" class="dish__stepper">
+        <div v-if="quantity > 0" class="dish__stepper" @click.stop>
           <button type="button" class="dish__step" aria-label="减少" v-on="minusBinding">−</button>
           <span class="dish__count so-num">{{ quantity }}</span>
           <button
@@ -58,7 +58,7 @@
           type="button"
           :class="['dish__add', { 'dish__add--spec': isMultiSpec(dish), 'is-off': !saleable }]"
           :disabled="!saleable"
-          @click="onAddClick"
+          @click.stop="onAddClick"
         >
           {{ saleable ? (isMultiSpec(dish) ? "选规格" : "＋ 加购") : soldOutLabel }}
         </button>
@@ -160,8 +160,8 @@ function pointOf(event: MouseEvent): { x: number; y: number } | null {
   return event.clientX === 0 && event.clientY === 0 ? null : { x: event.clientX, y: event.clientY };
 }
 
-function openSheet(event: MouseEvent): void {
-  emit("pick", pointOf(event));
+function openDetail(): void {
+  void router.push({ name: "dish", params: { id: props.dish.dishId } });
 }
 
 function onAddClick(event: MouseEvent): void {

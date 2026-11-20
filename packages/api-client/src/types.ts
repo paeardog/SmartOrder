@@ -674,6 +674,42 @@ export interface PlatformUserProfileUpdate {
   dormBuilding?: string;
 }
 
+export interface UserProfileUpdate {
+  nickname?: string;
+  realName?: string;
+  phone?: string;
+  college?: string;
+  campusArea?: string;
+  dormBuilding?: string;
+}
+
+export interface UserImportFile {
+  fileName: string;
+  contentBase64: string;
+}
+
+export interface UserImportRow {
+  rowNumber: number;
+  studentNo: string;
+  realName: string;
+  phone: string;
+  college: string;
+  campusArea: string;
+  dormBuilding: string;
+  nickname: string;
+  action: "CREATE" | "UPDATE";
+  errors: string[];
+}
+
+export interface UserImportResult {
+  rows: UserImportRow[];
+  total: number;
+  createCount: number;
+  updateCount: number;
+  errorCount: number;
+  committed: boolean;
+}
+
 export interface PlatformUserVerifyRequest {
   verifyStatus: 2 | 3;
   expectedVerifyStatus: VerifyStatus;

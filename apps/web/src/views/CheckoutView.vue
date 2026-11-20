@@ -14,7 +14,7 @@ import {
   type MerchantSummary,
   type PreflightResult,
 } from "@smartorder/api-client";
-import { createClientOrderNo, formatMoneyShort, formatYuan } from "@smartorder/shared";
+import { createClientOrderNo, formatMoneyShort, formatYuan, readPickupContact, savePickupContact } from "@smartorder/shared";
 import AppIcon from "../components/AppIcon.vue";
 import EmptyState from "../components/EmptyState.vue";
 import SoImage from "../components/SoImage.vue";
@@ -37,8 +37,16 @@ const addresses = useAddressStore();
 const orders = useOrderStore();
 
 const remark = ref("");
-const contactName = ref(tokenStore.profile?.realName || tokenStore.profile?.nickname || "");
-const contactPhone = ref(tokenStore.profile?.phone ?? "");
+const contactUserId = tokenStore.profile?.userId;
+const savedContact = readPickupContact(contactUserId);
+const contactName = ref(savedContact?.name ?? (tokenStore.profile?.realName || tokenStore.profile?.nickname || ""));
+const contactPhone = ref(savedContact?.phone ?? tokenStore.profile?.phone ?? "");
+
+function saveContact(): void {
+  if (dining.mode !== "DELIVERY" && contactUserId === tokenStore.profile?.userId) {
+    savePickupContact(contactUserId, { name: contactName.value, phone: contactPhone.value });
+  }
+}
 const addressId = ref("");
 const couponOpen = ref(false);
 const addressOpen = ref(false);
@@ -387,13 +395,14 @@ onMounted(() => {
             <div class="so-grid so-grid--2">
               <label class="so-field">
                 <span class="so-field__label">姓名</span>
-                <input v-model="contactName" class="so-input" type="text" maxlength="20" placeholder="出餐时叫你的名字" />
+                <input v-model="contactName" class="so-input" @blur="saveContact" type="text" maxlength="20" placeholder="出餐时叫你的名字" />
               </label>
               <label class="so-field">
                 <span class="so-field__label">手机号</span>
-                <input v-model="contactPhone" class="so-input" type="tel" maxlength="11" placeholder="11 位手机号" />
+                <input v-model="contactPhone" class="so-input" @blur="saveContact" type="tel" maxlength="11" placeholder="11 位手机号" />
               </label>
             </div>
+            <p class="so-hint">填写完整后自动记住，下次自取、堂食无需重填（仅当前浏览器、当前账号）。</p>
             <p v-if="phoneError !== ''" class="so-error">{{ phoneError }}</p>
           </section>
 

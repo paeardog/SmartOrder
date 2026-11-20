@@ -124,9 +124,12 @@ const canSubmit = computed(() => {
   return studentNo.value.trim() !== "" && password.value !== "";
 });
 
+// TODO(上线前): 移除配送员测试账号提示并修改或停用演示账号
 const hint = computed(() =>
   entryRole.value === "rider"
-    ? "仅限已有审核配送资格的学生账号，不支持配送员自注册"
+    ? isDev
+      ? "配送员测试账号：2022010101 · 密码：010101（已开通配送资格）"
+      : "仅限已有审核配送资格的学生账号，不支持配送员自注册"
     : mode.value === "register"
     ? "学号 8-12 位，密码至少 6 位"
     : isDev

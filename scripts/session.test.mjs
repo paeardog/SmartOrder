@@ -113,6 +113,31 @@ function assertCleared({ api, session, routes }) {
   }
 }
 
+test('头像上传保留 FormData，过期 token 刷新后重放文件', async () => {
+  const api = createApi();
+  let token = 'old';
+  api.configureRequest({ token: () => token, refresh: async () => { token = 'new'; return true; } });
+  const file = new File(['avatar-test'], 'avatar.jpg', { type: 'image/jpeg' });
+  let originalBody;
+  api.fetch = async ({ url, headers, body }) => {
+    assert.equal(url, '/api/v1/auth/avatar');
+    assert.equal(headers['Content-Type'], undefined);
+    assert.ok(body instanceof FormData);
+    assert.equal(await body.get('file').text(), 'avatar-test');
+    assert.equal(body.get('file').name, 'avatar.jpg');
+    if (headers.Authorization === 'Bearer old') {
+      originalBody = body;
+      return response(api.ErrorCode.TOKEN_EXPIRED, null, 401);
+    }
+    assert.equal(headers.Authorization, 'Bearer new');
+    assert.equal(body, originalBody);
+    return response(0, { avatarUrl: '/api/v1/system/avatars/test.jpg' });
+  };
+  const profile = await api.auth.uploadAvatar(file);
+  assert.equal(profile.avatarUrl, '/api/v1/system/avatars/test.jpg');
+  assert.equal(api.calls.length, 2);
+});
+
 for (const app of ['web', 'h5']) {
   test(`${app}：并发 401 只刷新一次，原请求携带新 token 重放一次，迟到 401 不重复刷新`, { timeout: 3000 }, async () => {
     const { api, session, routes } = await createApp(app);
@@ -253,6 +278,22 @@ test('共享刷新回调返回 false 或抛异常时正常退出，完成后释�
   }
 });
 
+test('取餐人按账号保存、校验并保留上次有效信息', () => {
+  const storage = load('packages/shared/src/storage.ts');
+  const contact = { name: ' 张同学 ', phone: ' 13800138000 ' };
+  assert.equal(storage.readPickupContact('1001'), null);
+  assert.equal(storage.savePickupContact(undefined, contact), false);
+  assert.equal(storage.savePickupContact('1001', contact), true);
+  assert.deepEqual(storage.readPickupContact('1001'), { name: '张同学', phone: '13800138000' });
+  assert.equal(storage.readPickupContact('1002'), null);
+  for (const invalid of [{ name: '', phone: '13800138000' }, { name: '张', phone: '123' }, { name: '张'.repeat(21), phone: '13800138000' }]) {
+    assert.equal(storage.savePickupContact('1001', invalid), false);
+    assert.equal(storage.readPickupContact('1001').name, '张同学');
+  }
+  storage.writeJson('so.pickup.contact.1002', { name: 123, phone: null });
+  assert.equal(storage.readPickupContact('1002'), null);
+});
+
 test('H5 真实 Checkout setup：失败重试复用幂等键、保留提交锁，新页面生成新键', { timeout: 3000 }, async () => {
   const { api, session, router, routes } = await createApp('h5');
   let now = 1000;
@@ -371,6 +412,7 @@ test('商家退款审核：校验驳回原因、防重复提交、失败可重�
     '@smartorder/shared': {},
     '../components/OrderTag.vue': {},
     '../components/UiModal.vue': {},
+    '../utils/clock': { useServerTick: () => vue.ref(0), liveWaitingSeconds: (row) => row.waitingSeconds },
     '../stores/session': { consoleStore: account },
     '../stores/toasts': { toastError: (text) => errors.push(text), toastOk: (text) => successes.push(text) },
   });
@@ -507,6 +549,27 @@ test('H5 配送订单隐藏自取码并保留配送员取餐时间线', () => {
   page.detail.value.fulfillmentType = 'PICKUP';
   assert.equal(page.showCode.value, true);
   assert.equal(page.logNote({ fromStatus: 'COOKING', toStatus: 'READY', operatorName: '', note: '请到店取餐' }), '请到店取餐');
+});
+
+test('H5 配送员测试账号只在开发环境的配送入口显示', async () => {
+  for (const dev of [false, true]) {
+    for (const mode of ['student', 'rider']) {
+      const component = loadComponent('apps/h5/src/views/LoginView.vue', {
+        vue,
+        'vue-router': { useRoute: () => ({ query: { mode } }), useRouter: () => ({}) },
+        '@smartorder/api-client': { auth: {} },
+        '../stores/session': {},
+        '../utils/report': {},
+        '../utils/rider': {},
+      }, {}, { dev, inlineTemplate: true });
+      const app = vue.createSSRApp(component);
+      for (const name of ['van-icon', 'van-field', 'van-button']) app.component(name, { render: () => null });
+      const html = await renderToString(app);
+      assert.equal(html.includes('配送员测试账号：2022010101'), dev && mode === 'rider');
+      assert.equal(html.includes('密码：010101'), dev && mode === 'rider');
+      assert.equal(html.includes('不支持配送员自注册'), !dev && mode === 'rider');
+    }
+  }
 });
 
 test('Web 登录演示提示只在 DEV 渲染', async () => {

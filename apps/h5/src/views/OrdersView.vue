@@ -60,6 +60,11 @@
             <div class="orders-card__main" @click="open(order)">
               <div :class="['orders-card__thumb', { 'orders-card__thumb--code': showCode(order) }]">
                 <em v-if="showCode(order)">{{ order.pickupCode }}</em>
+                <ArtImage
+                  v-else-if="previewItem(order)?.dishImage"
+                  :src="previewItem(order)?.dishImage"
+                  :name="previewItem(order)?.dishName ?? order.merchantName"
+                />
                 <van-icon v-else :name="thumbIcon(order.status)" size="19" />
               </div>
               <div class="orders-card__info">
@@ -113,6 +118,7 @@ import {
   serverNowMs,
   type Tone,
 } from "@smartorder/shared";
+import ArtImage from "../components/ArtImage.vue";
 import EmptyState from "../components/EmptyState.vue";
 import StatusTag from "../components/StatusTag.vue";
 import { useCartStore } from "../stores/cart";
@@ -203,6 +209,10 @@ function showCode(order: OrderSummary): boolean {
   return order.status === "READY" && (order.pickupCode ?? "") !== "";
 }
 
+function previewItem(order: OrderSummary) {
+  return orderStore.detail[order.orderNo]?.items.find((item) => item.dishImage !== "");
+}
+
 function thumbIcon(status: OrderStatus): string {
   if (status === "PENDING_PAYMENT") return "balance-o";
   if (status === "COMPLETED") return "passed";
@@ -278,6 +288,11 @@ async function fetchPage(targetPage: number): Promise<void> {
   const result = await ordersApi.list({ status: activeTab.value, page: targetPage, pageSize: PAGE_SIZE });
   list.value = targetPage === 1 ? result.list : [...list.value, ...result.list];
   cacheWrite(scopeOf(activeTab.value, targetPage), result.list, 5 * 60_000);
+  for (const order of result.list) {
+    if (!showCode(order) && !orderStore.detail[order.orderNo]) {
+      void orderStore.refreshDetail(order.orderNo);
+    }
+  }
   finished.value = result.list.length < PAGE_SIZE || list.value.length >= result.total;
   if (!finished.value) {
     page.value = targetPage + 1;

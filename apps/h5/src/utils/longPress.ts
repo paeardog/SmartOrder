@@ -5,10 +5,10 @@ export interface LongPressOptions {
 }
 
 export interface LongPressBinding {
-  onPointerdown: () => void;
-  onPointerup: () => void;
-  onPointercancel: () => void;
-  onClick: () => void;
+  pointerdown: () => void;
+  pointerup: () => void;
+  pointercancel: () => void;
+  click: () => void;
 }
 
 export function useLongPress(step: () => void, options: LongPressOptions = {}): LongPressBinding {
@@ -29,8 +29,10 @@ export function useLongPress(step: () => void, options: LongPressOptions = {}): 
     }
   }
 
+  // Vue 的 v-on="binding" 期望无 on 前缀的事件名（click / pointerdown ...），
+  // 不能用 React 风格的 onClick / onPointerdown，否则事件不会绑定。
   return {
-    onPointerdown(): void {
+    pointerdown(): void {
       holding = false;
       stop();
       holdTimer = window.setTimeout(() => {
@@ -39,13 +41,13 @@ export function useLongPress(step: () => void, options: LongPressOptions = {}): 
         repeatTimer = window.setInterval(step, rate);
       }, delay);
     },
-    onPointerup(): void {
+    pointerup(): void {
       stop();
     },
-    onPointercancel(): void {
+    pointercancel(): void {
       stop();
     },
-    onClick(): void {
+    click(): void {
       stop();
       if (holding) {
         holding = false;

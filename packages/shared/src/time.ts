@@ -72,19 +72,19 @@ export function formatCountdown(ms: number): string {
   return h > 0 ? `${h}:${pad(m)}:${pad(s)}` : `${pad(m)}:${pad(s)}`;
 }
 
-export function formatDurationSeconds(seconds: number): string {
+export function formatDurationSeconds(seconds: number, withSeconds = false): string {
   const total = Math.max(0, Math.round(seconds));
   if (total < 60) {
     return `${total} 秒`;
   }
   const minutes = Math.floor(total / 60);
   if (minutes < 60) {
-    return `${minutes} 分`;
+    return `${minutes} 分${withSeconds ? ` ${total % 60} 秒` : ""}`;
   }
   const hours = Math.floor(minutes / 60);
   const rest = minutes % 60;
   if (hours < 24) {
-    return rest === 0 ? `${hours} 小时` : `${hours} 小时 ${rest} 分`;
+    return rest === 0 ? `${hours} 小时` : `${hours} 小时 ${rest} 分${withSeconds ? ` ${total % 60} 秒` : ""}`;
   }
   return `${Math.floor(hours / 24)} 天 ${hours % 24} 小时`;
 }

@@ -1,12 +1,14 @@
 package com.campus.smartorder.auth.api;
 
 import com.campus.smartorder.auth.service.AuthService;
+import com.campus.smartorder.auth.service.JwtTokenProvider;
 import com.campus.smartorder.common.api.ApiResponse;
 import com.campus.smartorder.common.api.BizException;
 import com.campus.smartorder.common.api.ErrorCode;
 import jakarta.servlet.http.HttpServletRequest;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.PatchMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
@@ -55,6 +57,15 @@ public class AuthController {
         return ApiResponse.ok(authService.profileOf(currentUserId(request)));
     }
 
+    @PatchMapping("/profile")
+    public ApiResponse<Map<String, Object>> updateProfile(HttpServletRequest request,
+                                                         @RequestBody Map<String, Object> body) {
+        if (!JwtTokenProvider.SUBJECT_USER.equals(request.getAttribute("subjectType"))) {
+            throw new BizException(ErrorCode.FORBIDDEN, "请使用学生账号登录");
+        }
+        return ApiResponse.ok(authService.updateProfile(currentUserId(request), body));
+    }
+
     @PostMapping("/refresh")
     public ApiResponse<Map<String, Object>> refreshToken(@RequestBody Map<String, String> request) {
         return ApiResponse.ok(authService.refreshToken(required(request, "refreshToken")));
@@ -82,6 +93,6 @@ public class AuthController {
         if (value == null || value.isBlank()) {
             throw BizException.of(ErrorCode.INVALID_PARAM, key + " 不能为空");
         }
-        return value.trim();
+        return "password".equals(key) ? value : value.trim();
     }
 }

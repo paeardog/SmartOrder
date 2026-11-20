@@ -26,13 +26,15 @@
                 checked-color="var(--primary)"
                 @change="(v: boolean) => toggleSelect(item.cartItemId, v)"
               />
-              <div class="cart-item__image">
+              <button type="button" class="cart-item__image" aria-label="查看商品详情" @click="goDetail(item)">
                 <img v-if="item.dishImage !== ''" :src="item.dishImage" :alt="item.dishName" loading="lazy" @error="hideBrokenImage" />
                 <span v-else class="cart-item__placeholder"><van-icon name="photo-o" size="26" /></span>
-              </div>
+              </button>
               <div class="cart-item__body">
-                <div class="cart-item__name">{{ item.dishName }}</div>
-                <div v-if="item.optionText !== ''" class="cart-item__opt">{{ item.optionText }}</div>
+                <button type="button" class="cart-item__link" @click="goDetail(item)">
+                  <span class="cart-item__name">{{ item.dishName }}</span>
+                  <span v-if="item.optionText !== ''" class="cart-item__opt">{{ item.optionText }}</span>
+                </button>
                 <div class="cart-item__row">
                   <div class="so-price">
                     <span class="so-price__cny">¥</span>
@@ -86,6 +88,7 @@
 import { computed, onMounted, ref } from "vue";
 import { useRouter } from "vue-router";
 import { formatMoney } from "@smartorder/shared";
+import type { CartItem } from "@smartorder/api-client";
 import { useCartStore } from "../stores/cart";
 import { reportError } from "../utils/report";
 
@@ -126,6 +129,13 @@ async function setQuantity(cartItemId: string, value: number): Promise<void> {
 
 async function clearGroup(merchantId: string): Promise<void> {
   await cart.clear(merchantId);
+}
+
+function goDetail(item: CartItem): void {
+  if (item.dishId === "") {
+    return;
+  }
+  void router.push({ name: "dish", params: { id: item.dishId } });
 }
 
 function goCheckout(): void {
@@ -234,8 +244,11 @@ onMounted(async () => {
   overflow: hidden;
   display: grid;
   place-items: center;
+  padding: 0;
   background: var(--muted-soft);
+  border: 0;
   border-radius: 14px;
+  cursor: pointer;
 }
 
 .cart-item__image img {
@@ -259,7 +272,22 @@ onMounted(async () => {
   min-width: 0;
 }
 
+.cart-item__link {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.2rem;
+  max-width: 100%;
+  min-width: 0;
+  padding: 0;
+  background: transparent;
+  border: 0;
+  text-align: left;
+  cursor: pointer;
+}
+
 .cart-item__name {
+  max-width: 100%;
   overflow: hidden;
   color: var(--deep-text);
   font-weight: var(--font-weight-semibold);

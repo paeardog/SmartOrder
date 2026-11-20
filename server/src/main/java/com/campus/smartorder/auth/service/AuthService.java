@@ -1,6 +1,8 @@
 package com.campus.smartorder.auth.service;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
+import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
+import org.springframework.dao.DuplicateKeyException;
 import com.campus.smartorder.auth.domain.AuthToken;
 import com.campus.smartorder.auth.domain.SmsCode;
 import com.campus.smartorder.auth.mapper.AuthTokenMapper;
@@ -151,27 +153,63 @@ public class AuthService {
     @Transactional
     public Map<String, Object> updateProfile(Long userId, Map<String, Object> body) {
         User user = requireUser(userId);
-        if (body.containsKey("nickname")) {
-            user.setNickname(text(body.get("nickname"), user.getNickname()));
+        Map<String, Integer> limits = Map.of("nickname", 64, "realName", 32, "phone", 11,
+                "college", 64, "campusArea", 64, "dormBuilding", 64);
+        Map<String, String> values = new LinkedHashMap<>();
+        for (var entry : body.entrySet()) {
+            Integer max = limits.get(entry.getKey());
+            if (max == null || !(entry.getValue() instanceof String value)) {
+                throw new BizException(ErrorCode.INVALID_PARAM, "不支持的资料字段或字段类型");
+            }
+            String normalized = value.strip();
+            if (normalized.codePointCount(0, normalized.length()) > max) {
+                throw new BizException(ErrorCode.INVALID_PARAM, entry.getKey() + "不能超过" + max + "字");
+            }
+            values.put(entry.getKey(), normalized);
         }
-        if (body.containsKey("realName")) {
-            user.setRealName(text(body.get("realName"), user.getRealName()));
+        if (values.isEmpty()) return profile(user);
+        String phone = values.get("phone");
+        if (phone != null && !phone.isEmpty()) {
+            if (!phone.matches("1[3-9]\\d{9}")) {
+                throw new BizException(ErrorCode.INVALID_PARAM, "手机号格式不正确");
+            }
+            if (userMapper.selectCount(new LambdaQueryWrapper<User>()
+                    .eq(User::getPhone, phone).ne(User::getId, userId)) > 0) {
+                throw new BizException(ErrorCode.USER_PHONE_EXISTS);
+            }
         }
-        if (body.containsKey("college")) {
-            user.setCollege(text(body.get("college"), user.getCollege()));
+        LambdaUpdateWrapper<User> update = new LambdaUpdateWrapper<User>().eq(User::getId, userId);
+        boolean identityChanged = false;
+        for (var entry : values.entrySet()) {
+            String value = entry.getValue();
+            switch (entry.getKey()) {
+                case "nickname" -> update.set(User::getNickname, value);
+                case "phone" -> update.set(User::getPhone, value.isEmpty() ? null : value);
+                case "dormBuilding" -> update.set(User::getDormBuilding, value);
+                case "realName" -> {
+                    identityChanged |= !value.equals(Ids.blank(user.getRealName()).strip());
+                    update.set(User::getRealName, value);
+                }
+                case "college" -> {
+                    identityChanged |= !value.equals(Ids.blank(user.getCollege()).strip());
+                    update.set(User::getCollege, value);
+                }
+                case "campusArea" -> {
+                    identityChanged |= !value.equals(Ids.blank(user.getCampusArea()).strip());
+                    update.set(User::getCampusArea, value);
+                }
+            }
         }
-        if (body.containsKey("campusArea")) {
-            user.setCampusArea(text(body.get("campusArea"), user.getCampusArea()));
+        if (identityChanged || Integer.valueOf(User.VERIFY_REJECTED).equals(user.getVerifyStatus())) {
+            update.set(User::getVerifyStatus, User.VERIFY_PENDING).set(User::getVerifyNote, "");
         }
-        if (body.containsKey("dormBuilding")) {
-            user.setDormBuilding(text(body.get("dormBuilding"), user.getDormBuilding()));
+        update.set(User::getUpdatedAt, LocalDateTime.now());
+        try {
+            userMapper.update(null, update);
+        } catch (DuplicateKeyException ex) {
+            throw new BizException(ErrorCode.USER_PHONE_EXISTS);
         }
-        if (body.containsKey("phone")) {
-            user.setPhone(text(body.get("phone"), user.getPhone()));
-        }
-        user.setUpdatedAt(LocalDateTime.now());
-        userMapper.updateById(user);
-        return profile(user);
+        return profileOf(userId);
     }
 
     @Transactional
@@ -290,13 +328,6 @@ public class AuthService {
 
     private String normalizeStudentNo(String value) {
         return value == null ? "" : value.trim();
-    }
-
-    private String text(Object value, String fallback) {
-        if (value == null) {
-            return fallback == null ? "" : fallback;
-        }
-        return String.valueOf(value).trim();
     }
 
     private String hash(String input) {

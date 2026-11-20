@@ -27,6 +27,7 @@ import {
 } from "../stores/board";
 import { toastError, toastInfo, toastOk } from "../stores/toasts";
 import { setSoundEnabled } from "../utils/alerts";
+import { liveWaitingSeconds, useServerTick } from "../utils/clock";
 
 defineOptions({ name: "BoardView" });
 
@@ -42,6 +43,8 @@ const code = ref("");
 const codeBusy = ref(false);
 const showGuide = ref(readJson<boolean>(GUIDE_KEY) !== false);
 
+const nowMs = useServerTick();
+const detailWaited = computed(() => (detail.value ? formatDurationSeconds(liveWaitingSeconds(detail.value, nowMs.value), true) : ""));
 const refunding = computed(() => countOf("REFUNDING"));
 const total = computed(() => BOARD_STATUSES.reduce((sum, status) => sum + countOf(status), 0));
 const degraded = computed(() => board.connection === "polling" || board.connection === "reconnecting");
@@ -236,7 +239,7 @@ function gotoRefunds(): void {
         <div class="so-kv"><span class="so-kv__key">取餐码</span><span class="so-kv__val">{{ detail.pickupCode ?? "未生成" }}</span></div>
         <div class="so-kv"><span class="so-kv__key">履约</span><span class="so-kv__val">{{ FULFILLMENT_LABELS[detail.fulfillmentType] }}</span></div>
         <div class="so-kv"><span class="so-kv__key">下单时间</span><span class="so-kv__val">{{ formatDateTime(detail.createdAt, true) }}</span></div>
-        <div class="so-kv"><span class="so-kv__key">已等待</span><span class="so-kv__val">{{ formatDurationSeconds(detail.waitingSeconds) }}</span></div>
+        <div class="so-kv"><span class="so-kv__key">已等待</span><span class="so-kv__val">{{ detailWaited }}</span></div>
         <div class="so-kv"><span class="so-kv__key">联系人</span><span class="so-kv__val">{{ detail.contactName }} {{ detail.contactPhone }}</span></div>
         <div class="so-kv"><span class="so-kv__key">实付</span><span class="so-kv__val">{{ formatYuan(detail.payAmount) }}</span></div>
       </div>

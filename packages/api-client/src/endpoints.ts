@@ -72,6 +72,9 @@ import type {
   SystemStats,
   TokenPair,
   UserProfile,
+  UserProfileUpdate,
+  UserImportFile,
+  UserImportResult,
   VerifyPickupRequest,
 } from "./types";
 
@@ -88,6 +91,12 @@ export const auth = {
   refresh: (refreshToken: string) => post<TokenPair>("/auth/refresh", { refreshToken }, { withToken: false }),
   logout: (refreshToken: string) => post<null>("/auth/logout", { refreshToken }),
   profile: () => get<UserProfile>("/auth/profile"),
+  updateProfile: (body: UserProfileUpdate) => patch<UserProfile>("/auth/profile", body),
+  uploadAvatar: (file: File) => {
+    const body = new FormData();
+    body.append("file", file);
+    return post<UserProfile>("/auth/avatar", body);
+  },
   consoleLogin: (username: string, password: string) => post<ConsoleSession>("/auth/console/login", { username, password }),
 };
 
@@ -213,6 +222,9 @@ export const platform = {
   overview: () => get<PlatformOverview>("/platform/overview"),
   users: (params: ListPlatformUsersParams) => get<Page<PlatformUserRow>>("/platform/users", { ...params }),
   userSummary: () => get<PlatformUserSummary>("/platform/users/summary"),
+  userImportTemplate: () => get<UserImportFile>("/platform/users/import/template"),
+  previewUserImport: (body: UserImportFile) => post<UserImportResult>("/platform/users/import/preview", body),
+  commitUserImport: (body: UserImportFile) => post<UserImportResult>("/platform/users/import/commit", body),
   updateUserStatus: (userId: string, status: 0 | 1, expectedStatus: 0 | 1, reason: string) =>
     patch<PlatformUserRow>(`/platform/users/${userId}/status`, { status, expectedStatus, reason }),
   updateUserProfile: (userId: string, body: PlatformUserProfileUpdate) =>

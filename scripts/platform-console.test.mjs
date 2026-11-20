@@ -32,6 +32,7 @@ async function view(name, platform = {}, query = {}) {
     '@smartorder/api-client': { platform, ApiError: class extends Error {} },
     '@smartorder/shared': {},
     '../components/UiModal.vue': {},
+    '../components/UserImportActions.vue': {},
     '../components/MetricCard.vue': {},
     '../stores/session': { signedIn: () => true },
     '../stores/toasts': { toastOk: (text) => notices.push(text), toastError: (text) => notices.push(text) },

@@ -2,9 +2,12 @@
   <div class="profile-page">
     <header class="profile-hero">
       <template v-if="profile">
-        <div class="profile-hero__avatar">
+        <button type="button" class="profile-hero__avatar profile-hero__avatar--editable" aria-label="修改头像"
+          :disabled="refreshing || saving || avatarBusy" @click="avatarInput?.click()">
           <ArtImage :src="profile.avatarUrl" :name="profile.nickname" radius="18px" />
-        </div>
+          <span class="profile-hero__avatar-label">{{ avatarBusy ? '处理中' : '修改' }}</span>
+        </button>
+        <input ref="avatarInput" class="profile-avatar-input" type="file" accept="image/jpeg,image/png,image/webp" @change="selectAvatar" />
         <div class="profile-hero__body">
           <div class="profile-hero__name">{{ profile.nickname }}</div>
           <div class="profile-hero__meta">{{ profile.realName }} · {{ profile.college }}</div>
@@ -73,7 +76,7 @@
 
       <section v-if="profile" class="profile-stats">
         <div class="profile-stats__item">
-          <b class="so-num">{{ profile.orderCount }}</b>
+          <b class="so-num">{{ orderCounts.ALL ?? '—' }}</b>
           <span>累计下单</span>
         </div>
         <div class="profile-stats__item">
@@ -81,7 +84,7 @@
           <span>信用分</span>
         </div>
         <div class="profile-stats__item">
-          <b class="so-num">{{ couponCount }}</b>
+          <b class="so-num">{{ couponCount ?? '—' }}</b>
           <span>可用券</span>
         </div>
       </section>
@@ -94,34 +97,192 @@
         </div>
       </section>
 
+      <section v-if="profile" class="profile-card so-card">
+        <van-button plain block :disabled="refreshing" @click="openEdit">编辑个人资料</van-button>
+      </section>
+
       <section v-if="profile" class="profile-card so-card profile-card--logout">
         <van-button plain type="default" block @click="logout">退出登录</van-button>
       </section>
     </main>
+    <van-popup v-model:show="avatarOpen" position="bottom" round :close-on-click-overlay="!avatarBusy" safe-area-inset-bottom>
+      <div class="profile-avatar-editor">
+        <h3>修改头像</h3>
+        <img v-if="avatarPreview" :src="avatarPreview" class="profile-avatar-preview" alt="新头像预览" />
+        <p>图片将居中裁剪为正方形</p>
+        <div class="profile-avatar-actions">
+          <van-button block :disabled="avatarBusy" @click="avatarOpen = false">取消</van-button>
+          <van-button block type="primary" :loading="avatarBusy" :disabled="avatarBusy || !avatarFile" @click="saveAvatar">保存头像</van-button>
+        </div>
+      </div>
+    </van-popup>
+    <van-popup v-model:show="formOpen" position="bottom" round :close-on-click-overlay="!saving" :closeable="!saving" safe-area-inset-bottom style="max-height: 90vh; overflow-y: auto">
+      <van-form style="padding: 24px 16px" @submit="saveProfile">
+        <h3>编辑个人资料</h3>
+        <p style="font-size: 13px; color: var(--content-meta)">真实姓名、学院或校区变更后需重新审核。认证被拒后保存将重新提交审核。</p>
+        <van-field :model-value="profile?.studentNo" label="学号" readonly placeholder="未绑定（不可修改）" />
+        <van-field v-for="field in fields" :key="field.key" v-model="form[field.key]" :label="field.label"
+          :maxlength="field.max" :disabled="saving" :type="field.key === 'phone' ? 'tel' : 'text'" />
+        <div v-if="areaOptions.length" style="padding: 8px 16px; font-size: 13px">
+          校区建议（也可自行输入）：
+          <van-button v-for="area in areaOptions" :key="area" size="mini" native-type="button" :disabled="saving" @click="form.campusArea = area">{{ area }}</van-button>
+        </div>
+        <p v-if="formError" role="alert" style="color: var(--danger)">{{ formError }}</p>
+        <van-button block type="primary" native-type="submit" :loading="saving" :disabled="saving">保存资料</van-button>
+      </van-form>
+    </van-popup>
   </div>
 </template>
 
 <script setup lang="ts">
-import { computed, onActivated, onMounted, ref } from "vue";
+import { computed, onActivated, onBeforeUnmount, onDeactivated, onMounted, reactive, ref, watch } from "vue";
+import { Form as VanForm, showFailToast, showSuccessToast } from "vant";
 import { useRouter } from "vue-router";
-import { applyTheme, readThemeMode, type ThemeMode } from "@smartorder/shared";
-import { coupons as couponsApi, favorites as favoritesApi, notices as noticesApi, orders as ordersApi, type OrderStatus } from "@smartorder/api-client";
+import { applyTheme, ORDER_LIST_TABS, readThemeMode, type ThemeMode } from "@smartorder/shared";
+import { auth as authApi, catalog, coupons as couponsApi, favorites as favoritesApi, notices as noticesApi, orders as ordersApi, prepareAvatar, profileChanges, USER_PROFILE_FIELDS, type UserProfileUpdate } from "@smartorder/api-client";
 import ArtImage from "../components/ArtImage.vue";
 import { useCampusStore } from "../stores/campus";
 import { useOrderStore } from "../stores/orders";
-import { clearTokens, tokenStore } from "../stores/session";
+import { clearTokens, setProfile, tokenStore } from "../stores/session";
 
 const router = useRouter();
 const campus = useCampusStore();
 const orderStore = useOrderStore();
 
 const theme = ref<ThemeMode>(readThemeMode());
-const couponCount = ref(0);
+const couponCount = ref<number | null>(null);
 const favoriteCount = ref(0);
 const unreadCount = ref(0);
-const completedCount = ref(0);
+const orderCounts = ref<Partial<Record<(typeof ORDER_LIST_TABS)[number]["key"], number>>>({});
+const areaOptions = ref<string[]>([]);
+
+async function loadAreaOptions(): Promise<void> {
+  try {
+    const points = await catalog.pickupPoints();
+    areaOptions.value = [...new Set(points.map((point) => point.campusArea).filter(Boolean))];
+  } catch {
+    areaOptions.value = [];
+  }
+}
 
 const profile = computed(() => tokenStore.profile);
+const formOpen = ref(false);
+const saving = ref(false);
+const refreshing = ref(false);
+const formError = ref("");
+const fields = USER_PROFILE_FIELDS;
+const form = reactive<Required<UserProfileUpdate>>({ nickname: "", realName: "", phone: "", college: "", campusArea: "", dormBuilding: "" });
+let original = { ...form };
+const avatarInput = ref<HTMLInputElement | null>(null);
+const avatarOpen = ref(false);
+const avatarBusy = ref(false);
+const avatarPreview = ref("");
+const avatarFile = ref<File | null>(null);
+let avatarRevision = 0;
+
+function clearAvatar(): void {
+  avatarRevision += 1;
+  if (avatarPreview.value) URL.revokeObjectURL(avatarPreview.value);
+  avatarPreview.value = "";
+  avatarFile.value = null;
+  avatarBusy.value = false;
+}
+
+async function selectAvatar(event: Event): Promise<void> {
+  const input = event.target as HTMLInputElement;
+  const file = input.files?.[0];
+  input.value = "";
+  const userId = profile.value?.userId;
+  if (!file || !userId || avatarBusy.value || refreshing.value || saving.value) return;
+  clearAvatar();
+  const revision = avatarRevision;
+  avatarBusy.value = true;
+  try {
+    const prepared = await prepareAvatar(file);
+    if (revision !== avatarRevision || profile.value?.userId !== userId) return;
+    avatarFile.value = prepared;
+    avatarPreview.value = URL.createObjectURL(prepared);
+    avatarOpen.value = true;
+  } catch (error) {
+    if (revision === avatarRevision) showFailToast(error instanceof Error ? error.message : "图片处理失败");
+  } finally {
+    if (revision === avatarRevision) avatarBusy.value = false;
+  }
+}
+
+async function saveAvatar(): Promise<void> {
+  const userId = profile.value?.userId;
+  if (!avatarFile.value || !userId || avatarBusy.value || refreshing.value || saving.value) return;
+  const revision = avatarRevision;
+  avatarBusy.value = true;
+  try {
+    const saved = await authApi.uploadAvatar(avatarFile.value);
+    if (revision !== avatarRevision || profile.value?.userId !== userId) return;
+    setProfile(saved);
+    avatarOpen.value = false;
+    showSuccessToast("头像已更新");
+  } catch (error) {
+    if (revision === avatarRevision) showFailToast(error instanceof Error ? error.message : "头像保存失败，请重试");
+  } finally {
+    if (revision === avatarRevision) avatarBusy.value = false;
+  }
+}
+
+watch(avatarOpen, (open) => { if (!open) clearAvatar(); });
+onBeforeUnmount(clearAvatar);
+onDeactivated(() => {
+  if (!avatarBusy.value) {
+    avatarOpen.value = false;
+    clearAvatar();
+  }
+});
+
+async function refreshProfile(): Promise<void> {
+  if (!tokenStore.access || refreshing.value || saving.value || avatarBusy.value) return;
+  refreshing.value = true;
+  const access = tokenStore.access;
+  try {
+    const latest = await authApi.profile();
+    if (tokenStore.access === access) setProfile(latest);
+  } catch (error) {
+    showFailToast(error instanceof Error ? error.message : "资料加载失败");
+  } finally {
+    refreshing.value = false;
+  }
+}
+
+function openEdit(): void {
+  if (!profile.value || refreshing.value) return;
+  for (const field of fields) form[field.key] = profile.value[field.key];
+  original = { ...form };
+  formError.value = "";
+  formOpen.value = true;
+}
+
+async function saveProfile(): Promise<void> {
+  if (saving.value) return;
+  formError.value = "";
+  let body: UserProfileUpdate;
+  try {
+    body = profileChanges(form, original);
+  } catch (error) {
+    formError.value = error instanceof Error ? error.message : "请检查填写的资料";
+    return;
+  }
+  saving.value = true;
+  const access = tokenStore.access;
+  try {
+    const saved = await authApi.updateProfile(body);
+    if (tokenStore.access !== access) return;
+    setProfile(saved);
+    formOpen.value = false;
+    showSuccessToast("资料已保存");
+  } catch (error) {
+    showFailToast(error instanceof Error ? error.message : "资料保存失败");
+  } finally {
+    saving.value = false;
+  }
+}
 
 const verifyTone = computed<"primary" | "warning" | "success" | "default">(() => {
   const status = profile.value?.verifyStatus;
@@ -141,21 +302,17 @@ const verifyLabel = computed(() => {
 
 const creditText = computed(() => String(profile.value?.creditScore ?? 0));
 
-function countOf(...statuses: OrderStatus[]): number {
-  return orderStore.active.filter((order) => statuses.includes(order.status)).length;
-}
-
 const quick = computed(() => [
-  { tab: "PENDING_PAYMENT", label: "待支付", icon: "balance-o", count: countOf("PENDING_PAYMENT") },
-  { tab: "READY", label: "待取餐", icon: "bag-o", count: countOf("READY") },
-  { tab: "ACTIVE", label: "进行中", icon: "clock-o", count: orderStore.active.length },
-  { tab: "COMPLETED", label: "已完成", icon: "passed", count: completedCount.value },
+  { tab: "PENDING_PAYMENT", label: "待支付", icon: "balance-o", count: orderCounts.value.PENDING_PAYMENT ?? 0 },
+  { tab: "READY", label: "待取餐", icon: "bag-o", count: orderCounts.value.READY ?? 0 },
+  { tab: "ACTIVE", label: "进行中", icon: "clock-o", count: orderCounts.value.ACTIVE ?? 0 },
+  { tab: "COMPLETED", label: "已完成", icon: "passed", count: orderCounts.value.COMPLETED ?? 0 },
 ]);
 
 const rows = computed(() => {
   const signed = profile.value !== null;
   return [
-    { label: "优惠券", to: signed ? "coupons" : "login", icon: "coupon-o", tone: "orange", value: "", badge: couponCount.value },
+    { label: "优惠券", to: signed ? "coupons" : "login", icon: "coupon-o", tone: "orange", value: "", badge: couponCount.value ?? 0 },
     { label: "收货地址", to: signed ? "address" : "login", icon: "location-o", tone: "green", value: "", badge: 0 },
     { label: "我的收藏", to: signed ? "favorites" : "login", icon: "star-o", tone: "amber", value: signed ? `${favoriteCount.value}` : "", badge: 0 },
     { label: "消息通知", to: signed ? "notices" : "login", icon: "bell", tone: "slate", value: "", badge: unreadCount.value },
@@ -171,20 +328,35 @@ function goTab(tab: string): void {
 }
 
 async function loadBadges(): Promise<void> {
-  if (profile.value === null) {
-    return;
-  }
-  const [coupons, favorites, notices, completed] = await Promise.all([
-    couponsApi.list("UNUSED").catch(() => []),
-    favoritesApi.list().catch(() => []),
-    noticesApi.list().catch(() => []),
-    ordersApi.list({ status: "COMPLETED", page: 1, pageSize: 1 }).catch(() => null),
+  const userId = profile.value?.userId;
+  if (!userId) return;
+  const [[coupons, favorites, notices], counts] = await Promise.all([
+    Promise.allSettled([couponsApi.list("UNUSED"), favoritesApi.list(), noticesApi.list()]),
+    Promise.allSettled(ORDER_LIST_TABS.map((tab) =>
+      ordersApi.list({ status: tab.key, page: 1, pageSize: 1 }),
+    )),
   ]);
-  couponCount.value = coupons.length;
-  favoriteCount.value = favorites.length;
-  unreadCount.value = notices.filter((message) => !message.readFlag).length;
-  completedCount.value = completed?.total ?? 0;
+  if (profile.value?.userId !== userId) return;
+  if (coupons.status === "fulfilled") couponCount.value = coupons.value.length;
+  if (favorites.status === "fulfilled") favoriteCount.value = favorites.value.length;
+  if (notices.status === "fulfilled") unreadCount.value = notices.value.filter((message) => !message.readFlag).length;
+  counts.forEach((result, index) => {
+    const tab = ORDER_LIST_TABS[index];
+    if (result.status === "fulfilled" && tab) orderCounts.value[tab.key] = result.value.total;
+  });
+  if ([coupons, favorites, notices, ...counts].some((result) => result.status === "rejected")) {
+    showFailToast("部分数据刷新失败，请稍后重试");
+  }
 }
+
+watch(() => profile.value?.userId, () => {
+  avatarOpen.value = false;
+  clearAvatar();
+  orderCounts.value = {};
+  couponCount.value = null;
+  favoriteCount.value = 0;
+  unreadCount.value = 0;
+});
 
 function toggleTheme(value: boolean): void {
   theme.value = value ? "dark" : "light";
@@ -197,11 +369,12 @@ function logout(): void {
   void router.replace({ name: "login" });
 }
 
-onMounted(async () => {
-  await Promise.all([orderStore.refreshList().catch(() => undefined), loadBadges()]);
+onMounted(() => {
+  void loadAreaOptions();
 });
 
 onActivated(() => {
+  void refreshProfile();
   void loadBadges();
 });
 </script>
@@ -250,6 +423,59 @@ onActivated(() => {
   background: rgba(255, 255, 255, 0.16);
   border-radius: 18px;
   box-shadow: 0 8px 20px rgba(7, 38, 27, 0.22);
+}
+
+.profile-hero__avatar--editable {
+  position: relative;
+  z-index: 1;
+  padding: 0;
+  border: 0;
+  cursor: pointer;
+}
+
+.profile-hero__avatar--editable:disabled {
+  cursor: wait;
+}
+
+.profile-hero__avatar-label {
+  position: absolute;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  padding: 2px 0;
+  color: #fff;
+  background: rgba(0, 0, 0, 0.45);
+  font-size: 10px;
+  text-align: center;
+}
+
+.profile-avatar-input {
+  display: none;
+}
+
+.profile-avatar-editor {
+  display: grid;
+  gap: 1rem;
+  padding: 1.25rem;
+  text-align: center;
+}
+
+.profile-avatar-editor p {
+  color: var(--content-meta);
+  font-size: 0.8rem;
+}
+
+.profile-avatar-preview {
+  width: 160px;
+  height: 160px;
+  margin: 0 auto;
+  object-fit: cover;
+  border-radius: 18px;
+}
+
+.profile-avatar-actions {
+  display: flex;
+  gap: 0.75rem;
 }
 
 .profile-hero__avatar--guest {

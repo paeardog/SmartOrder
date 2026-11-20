@@ -7,6 +7,7 @@ const routes = [
   { path: "/merchant/:id", name: "merchant", component: () => import("./views/MenuView.vue"), meta: { title: "档口" } },
   { path: "/merchant/:id/reviews", name: "merchant-reviews", component: () => import("./views/MerchantReviewsView.vue"), props: true, meta: { title: "商家评价" } },
   { path: "/search", name: "search", component: () => import("./views/SearchView.vue"), meta: { title: "搜索" } },
+  { path: "/dish/:id", name: "dish", component: () => import("./views/DishDetailView.vue"), meta: { title: "商品详情" } },
   { path: "/cart", name: "cart", component: () => import("./views/CartView.vue"), meta: { title: "购物车" } },
   {
     path: "/checkout",
@@ -45,6 +46,12 @@ const routes = [
     name: "favorites",
     component: () => import("./views/FavoritesView.vue"),
     meta: { title: "我的收藏", auth: true },
+  },
+  {
+    path: "/my-reviews",
+    name: "my-reviews",
+    component: () => import("./views/MyReviewsView.vue"),
+    meta: { title: "我的评价", auth: true },
   },
   { path: "/notices", name: "notices", component: () => import("./views/NoticesView.vue"), meta: { title: "消息通知", auth: true } },
   {

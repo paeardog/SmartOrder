@@ -265,7 +265,7 @@ function optionClass(group: OptionGroup, option: MenuOption): Record<string, boo
 }
 
 function isFull(group: OptionGroup): boolean {
-  return (selection.value[group.groupId] ?? []).length >= group.maxSelect && group.maxSelect > 0;
+  return group.maxSelect > 1 && (selection.value[group.groupId] ?? []).length >= group.maxSelect;
 }
 
 function unavailableCount(group: OptionGroup): number {

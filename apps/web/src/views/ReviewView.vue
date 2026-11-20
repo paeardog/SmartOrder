@@ -159,8 +159,8 @@ onMounted(() => {
         <p class="so-hint">{{ order.items.map((item) => item.dishName).join(" · ") }}</p>
 
         <div class="so-stack" style="margin-top: 1.25rem">
-          <div class="so-row so-row--between">
-            <span class="so-strong">整体评价</span>
+          <div class="so-rate-row">
+            <span class="so-strong so-rate-row__label">整体评价</span>
             <div class="so-rate">
               <button
                 v-for="value in 5"
@@ -173,11 +173,11 @@ onMounted(() => {
               >
                 <AppIcon name="star" :size="20" />
               </button>
-              <span class="so-hint">{{ SCORE_TEXT[scores.ratingScore] }}</span>
+              <span class="so-hint so-rate__text">{{ SCORE_TEXT[scores.ratingScore] }}</span>
             </div>
           </div>
-          <div class="so-row so-row--between">
-            <span class="so-strong">口味</span>
+          <div class="so-rate-row">
+            <span class="so-strong so-rate-row__label">口味</span>
             <div class="so-rate">
               <button
                 v-for="value in 5"
@@ -190,10 +190,11 @@ onMounted(() => {
               >
                 <AppIcon name="star" :size="20" />
               </button>
+              <span class="so-hint so-rate__text">{{ SCORE_TEXT[scores.tasteScore] }}</span>
             </div>
           </div>
-          <div class="so-row so-row--between">
-            <span class="so-strong">出餐速度</span>
+          <div class="so-rate-row">
+            <span class="so-strong so-rate-row__label">出餐速度</span>
             <div class="so-rate">
               <button
                 v-for="value in 5"
@@ -206,6 +207,7 @@ onMounted(() => {
               >
                 <AppIcon name="star" :size="20" />
               </button>
+              <span class="so-hint so-rate__text">{{ SCORE_TEXT[scores.speedScore] }}</span>
             </div>
           </div>
         </div>

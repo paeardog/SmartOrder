@@ -99,7 +99,8 @@ export async function request<T>(
     headers["X-Client-Order-No"] = options.clientOrderNo;
   }
   const hasBody = options.body !== undefined && method !== "GET";
-  if (hasBody) {
+  const multipart = options.body instanceof FormData;
+  if (hasBody && !multipart) {
     headers["Content-Type"] = "application/json";
   }
 
@@ -108,7 +109,7 @@ export async function request<T>(
     response = await fetch(requestPath(`${path}${buildQuery(options.query)}`), {
       method,
       headers,
-      body: hasBody ? JSON.stringify(options.body) : null,
+      body: hasBody ? (multipart ? options.body as FormData : JSON.stringify(options.body)) : null,
       credentials: "include",
       signal: options.signal,
     });

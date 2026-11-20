@@ -10,6 +10,7 @@ import {
 import { formatDateTime, formatYuan, ORDER_LIST_TABS, ORDER_STATUS_LABELS } from "@smartorder/shared";
 import ConfirmDialog from "../components/ConfirmDialog.vue";
 import EmptyState from "../components/EmptyState.vue";
+import SoImage from "../components/SoImage.vue";
 import StatusTag from "../components/StatusTag.vue";
 import { useOrderStore } from "../stores/orders";
 import { announceReorder, rebuildCart } from "../utils/reorder";
@@ -61,6 +62,54 @@ const visible = computed(() => {
 
 const hasMore = computed(() => rows.value.length < total.value);
 
+interface OrderPreview {
+  images: string[];
+  summary: string;
+}
+
+const previews = computed<Map<string, OrderPreview>>(() => {
+  const map = new Map<string, OrderPreview>();
+  for (const order of rows.value) {
+    const items = orders.detailOf(order.orderNo)?.items ?? [];
+    const images: string[] = [];
+    const names: string[] = [];
+    const seen = new Set<string>();
+    for (const item of items) {
+      if (names.length < 2) {
+        names.push(item.dishName);
+      }
+      if (item.dishImage !== "" && !seen.has(item.dishImage) && images.length < 3) {
+        seen.add(item.dishImage);
+        images.push(item.dishImage);
+      }
+    }
+    const summary = names.length === 0
+      ? `共 ${order.itemCount} 件商品`
+      : items.length > 2
+        ? `${names.join("、")} 等 ${items.length} 种商品`
+        : names.join("、");
+    map.set(order.orderNo, { images, summary });
+  }
+  return map;
+});
+
+async function prefetchDetails(list: OrderSummary[]): Promise<void> {
+  const missing = list.filter((order) => orders.detailOf(order.orderNo) === null);
+  if (missing.length === 0) {
+    return;
+  }
+  let cursor = 0;
+  const worker = async () => {
+    while (cursor < missing.length) {
+      const order = missing[cursor++];
+      if (order !== undefined) {
+        await orders.refreshDetail(order.orderNo);
+      }
+    }
+  };
+  await Promise.all(Array.from({ length: Math.min(4, missing.length) }, worker));
+}
+
 function actionsOf(order: OrderSummary): ReturnType<typeof orderActions> {
   return orderActions(order.status, { reviewed: orders.isReviewed(order.orderNo), cancelOpen: order.status === "PAID" });
 }
@@ -72,6 +121,7 @@ async function load(): Promise<void> {
     const result = await ordersApi.list({ page: 1, pageSize });
     rows.value = result.list;
     total.value = result.total;
+    void prefetchDetails(result.list);
   } catch (error) {
     reportError(error);
   } finally {
@@ -87,6 +137,7 @@ async function loadMore(): Promise<void> {
     page.value = next;
     rows.value = [...rows.value, ...result.list];
     total.value = result.total;
+    void prefetchDetails(result.list);
   } catch (error) {
     reportError(error);
   } finally {
@@ -201,12 +252,27 @@ onMounted(() => {
           </div>
         </div>
         <div class="so-order-card__body" style="cursor: pointer" @click="openDetail(order)">
-          <p class="so-strong">{{ ORDER_STATUS_LABELS[order.status] }} · 共 {{ order.itemCount }} 件</p>
-          <p class="so-hint">
-            订单号 {{ order.orderNo }}
-            <template v-if="order.pickupCode"> · 取餐码 {{ order.pickupCode }}</template>
-            <template v-if="order.pickupPointName !== ''"> · {{ order.pickupPointName }}</template>
-          </p>
+          <div class="so-order-card__preview">
+            <template v-if="(previews.get(order.orderNo)?.images.length ?? 0) > 0">
+              <SoImage
+                v-for="(image, index) in previews.get(order.orderNo)?.images ?? []"
+                :key="`${order.orderNo}-${index}`"
+                :src="image"
+                :alt="`${order.merchantName} 商品 ${index + 1}`"
+                img-class="so-order-card__thumb"
+              />
+            </template>
+            <SoImage v-else :alt="order.merchantName" img-class="so-order-card__thumb" />
+          </div>
+          <div class="so-grow" style="min-width: 0">
+            <p class="so-strong">{{ ORDER_STATUS_LABELS[order.status] }} · 共 {{ order.itemCount }} 件</p>
+            <p class="so-hint so-order-card__names">{{ previews.get(order.orderNo)?.summary }}</p>
+            <p class="so-hint">
+              订单号 {{ order.orderNo }}
+              <template v-if="order.pickupCode"> · 取餐码 {{ order.pickupCode }}</template>
+              <template v-if="order.pickupPointName !== ''"> · {{ order.pickupPointName }}</template>
+            </p>
+          </div>
         </div>
         <div class="so-order-card__foot">
           <span class="so-price">{{ formatYuan(order.payAmount) }}</span>

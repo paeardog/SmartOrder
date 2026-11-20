@@ -3,9 +3,12 @@ import { computed } from "vue";
 import type { MerchantOrderRow } from "@smartorder/api-client";
 import { FULFILLMENT_LABELS, formatClock, formatDurationSeconds, formatYuan } from "@smartorder/shared";
 import { BOARD_ACTIONS, type BoardAction, type BoardStatus } from "../stores/board";
+import { liveWaitingSeconds, useServerTick } from "../utils/clock";
 
 const props = defineProps<{ row: MerchantOrderRow; status: BoardStatus; busy?: boolean }>();
 const emit = defineEmits<{ act: [BoardAction]; reject: []; detail: [] }>();
+
+const nowMs = useServerTick();
 
 const URGENT_SECONDS: Record<BoardStatus, number> = {
   PAID: 120,
@@ -15,10 +18,11 @@ const URGENT_SECONDS: Record<BoardStatus, number> = {
 };
 
 const action = computed(() => BOARD_ACTIONS[props.status]);
-const urgent = computed(() => props.row.waitingSeconds >= URGENT_SECONDS[props.status]);
+const waitingSeconds = computed(() => liveWaitingSeconds(props.row, nowMs.value));
+const urgent = computed(() => waitingSeconds.value >= URGENT_SECONDS[props.status]);
 const amount = computed(() => formatYuan(props.row.payAmount));
 const tail = computed(() => props.row.orderNo.slice(-8));
-const waited = computed(() => formatDurationSeconds(props.row.waitingSeconds));
+const waited = computed(() => formatDurationSeconds(waitingSeconds.value, true));
 const takeAt = computed(() => formatClock(props.row.expectTakeAt));
 </script>
 

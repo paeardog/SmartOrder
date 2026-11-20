@@ -18,6 +18,7 @@ import org.springframework.web.bind.MissingServletRequestParameterException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 import org.springframework.web.method.annotation.HandlerMethodValidationException;
+import org.springframework.web.multipart.MaxUploadSizeExceededException;
 import org.springframework.web.servlet.resource.NoResourceFoundException;
 
 import java.util.ArrayList;
@@ -72,6 +73,11 @@ public class GlobalExceptionHandler {
                 .map(ConstraintViolation::getMessage)
                 .toList();
         return ResponseEntity.ok(ApiResponse.fail(ErrorCode.INVALID_PARAM, String.join("; ", messages)));
+    }
+
+    @ExceptionHandler(MaxUploadSizeExceededException.class)
+    public ResponseEntity<ApiResponse<Void>> handleMaxUploadSize(MaxUploadSizeExceededException ex) {
+        return ResponseEntity.ok(ApiResponse.fail(ErrorCode.INVALID_PARAM, "上传文件超过大小限制"));
     }
 
     @ExceptionHandler(HttpMessageNotReadableException.class)

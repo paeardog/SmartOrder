@@ -96,8 +96,9 @@
 
         <section v-if="mode !== 'DELIVERY'" class="checkout-card so-card">
           <div class="checkout-card__title">取餐人</div>
-          <van-field v-model="contactName" label="姓名" placeholder="请填写取餐人姓名" maxlength="20" class="checkout-field" />
-          <van-field v-model="contactPhone" label="手机" type="tel" placeholder="请填写联系电话" maxlength="11" class="checkout-field" />
+          <van-field v-model="contactName" label="姓名" placeholder="请填写取餐人姓名" maxlength="20" class="checkout-field" @blur="saveContact" />
+          <van-field v-model="contactPhone" label="手机" type="tel" placeholder="请填写联系电话" maxlength="11" class="checkout-field" @blur="saveContact" />
+          <p class="so-hint">填写完整后自动记住，下次自取、堂食无需重填（仅当前浏览器、当前账号）。</p>
           <div v-if="phoneError !== ''" class="checkout-warn checkout-warn--field">{{ phoneError }}</div>
         </section>
 
@@ -305,7 +306,7 @@ import {
   type PreflightLineResult,
   type PreflightResult,
 } from "@smartorder/api-client";
-import { createClientOrderNo } from "@smartorder/shared";
+import { createClientOrderNo, readPickupContact, savePickupContact } from "@smartorder/shared";
 import ArtImage from "../components/ArtImage.vue";
 import EmptyState from "../components/EmptyState.vue";
 import ScanSheet from "../components/ScanSheet.vue";
@@ -350,8 +351,16 @@ const submitting = ref(false);
 const preflight = ref<PreflightResult | null>(null);
 const notice = ref("");
 const noticeTone = ref<"bad" | "soft">("soft");
-const contactName = ref(tokenStore.profile?.realName ?? "");
-const contactPhone = ref(tokenStore.profile?.phone ?? "");
+const contactUserId = tokenStore.profile?.userId;
+const savedContact = readPickupContact(contactUserId);
+const contactName = ref(savedContact?.name ?? tokenStore.profile?.realName ?? "");
+const contactPhone = ref(savedContact?.phone ?? tokenStore.profile?.phone ?? "");
+
+function saveContact(): void {
+  if (dining.mode !== "DELIVERY" && contactUserId === tokenStore.profile?.userId) {
+    savePickupContact(contactUserId, { name: contactName.value, phone: contactPhone.value });
+  }
+}
 const remark = ref("");
 const deliveryFeeHint = ref(0);
 const couponOpen = ref(false);
@@ -473,8 +482,6 @@ function switchMode(next: DineMode): void {
     const fit = address.sorted.find((row) => deliverable(row));
     if (fit) {
       address.pick(fit.addressId);
-      contactName.value = fit.contactName;
-      contactPhone.value = fit.contactPhone;
     }
   }
   queuePreflight(50);
@@ -496,8 +503,6 @@ function chooseAddress(addressId: string): void {
   }
   address.pick(addressId);
   addressOpen.value = false;
-  contactName.value = row.contactName;
-  contactPhone.value = row.contactPhone;
   queuePreflight(50);
 }
 

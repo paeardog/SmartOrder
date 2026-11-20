@@ -20,6 +20,13 @@ const routes: RouteRecordRaw[] = [
     meta: { title: "商家评价" },
   },
   {
+    path: "/dish/:id",
+    name: "dish",
+    component: () => import("./views/DishDetailView.vue"),
+    props: true,
+    meta: { title: "商品详情" },
+  },
+  {
     path: "/search",
     name: "search",
     component: () => import("./views/SearchView.vue"),

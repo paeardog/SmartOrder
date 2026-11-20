@@ -2,6 +2,7 @@ export * from "./errors";
 export * from "./types";
 export * from "./http";
 export * from "./endpoints";
+export * from "./profile";
 export * from "./events";
 export * from "./shop/format";
 export * from "./shop/banner";

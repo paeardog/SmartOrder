@@ -14,6 +14,7 @@ import OrderTag from "../components/OrderTag.vue";
 import UiModal from "../components/UiModal.vue";
 import { consoleStore } from "../stores/session";
 import { toastError, toastOk } from "../stores/toasts";
+import { liveWaitingSeconds, useServerTick } from "../utils/clock";
 
 const TABS: ReadonlyArray<{ key: OrderStatus | "ALL"; label: string }> = [
   { key: "ALL", label: "全部" },
@@ -45,6 +46,8 @@ const auditNote = ref("");
 const auditSubmitting = ref(false);
 const canAudit = computed(() => consoleStore.account?.roleCode === "MERCHANT_OWNER");
 
+const nowMs = useServerTick();
+const detailWaited = computed(() => (detail.value ? formatDurationSeconds(liveWaitingSeconds(detail.value, nowMs.value), true) : ""));
 const pages = computed(() => Math.max(1, Math.ceil(total.value / pageSize.value)));
 const amountSum = computed(() => rows.value.reduce((sum, row) => sum + row.payAmount, 0));
 
@@ -250,7 +253,7 @@ onMounted(() => void load());
         <div class="so-kv"><span class="so-kv__key">订单号</span><span class="so-kv__val">{{ detail.orderNo }}</span></div>
         <div class="so-kv"><span class="so-kv__key">餐段</span><span class="so-kv__val">{{ detail.mealPeriod }}</span></div>
         <div class="so-kv"><span class="so-kv__key">联系人</span><span class="so-kv__val">{{ detail.contactName }} {{ detail.contactPhone }}</span></div>
-        <div class="so-kv"><span class="so-kv__key">已等待</span><span class="so-kv__val">{{ formatDurationSeconds(detail.waitingSeconds) }}</span></div>
+        <div class="so-kv"><span class="so-kv__key">已等待</span><span class="so-kv__val">{{ detailWaited }}</span></div>
         <div class="so-kv"><span class="so-kv__key">商品</span><span class="so-kv__val">{{ formatYuan(detail.itemAmount) }}</span></div>
         <div class="so-kv"><span class="so-kv__key">打包费</span><span class="so-kv__val">{{ formatYuan(detail.packFee) }}</span></div>
         <div class="so-kv"><span class="so-kv__key">配送费</span><span class="so-kv__val">{{ formatYuan(detail.deliveryFee) }}</span></div>

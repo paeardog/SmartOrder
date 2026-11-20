@@ -11,6 +11,7 @@ import type {
 import { VERIFY_STATUS_LABELS, formatDateTime, groupThousands } from "@smartorder/shared";
 import MetricCard from "../components/MetricCard.vue";
 import UiModal from "../components/UiModal.vue";
+import UserImportActions from "../components/UserImportActions.vue";
 import { toastError, toastOk } from "../stores/toasts";
 
 const route = useRoute();
@@ -258,6 +259,7 @@ void load();
       <select :value="verifyStatus ?? ''" class="so-select" style="width: 150px" aria-label="认证状态" @change="filter('verifyStatus', $event)"><option value="">全部认证状态</option><option v-for="(label, key) in VERIFY_STATUS_LABELS" :key="key" :value="key">{{ label }}</option></select>
       <button v-if="draft || keyword || status !== undefined || verifyStatus !== undefined" class="so-btn so-btn--ghost so-btn--sm" type="button" @click="resetFilters">清空筛选</button>
       <span class="so-topbar__spacer" />
+      <UserImportActions @imported="load" />
       <button class="so-btn so-btn--ghost so-btn--sm" type="button" :disabled="loading || submitting" @click="load">刷新</button>
     </form>
     <div v-if="error" class="so-banner so-banner--danger" role="alert"><span>{{ error }}</span><button class="so-btn so-btn--ghost so-btn--sm" type="button" @click="load">重试</button></div>

@@ -1,13 +1,15 @@
 <script setup lang="ts">
-import { computed, onMounted, ref } from "vue";
+import { computed, onActivated, onBeforeUnmount, onMounted, reactive, ref, watch } from "vue";
 import { useRouter } from "vue-router";
-import { coupons as couponsApi, orders as ordersApi } from "@smartorder/api-client";
+import { auth as authApi, coupons as couponsApi, orders as ordersApi, prepareAvatar, profileChanges, USER_PROFILE_FIELDS, type UserProfileUpdate } from "@smartorder/api-client";
+import SoModal from "../components/SoModal.vue";
+import SoImage from "../components/SoImage.vue";
 import { applyTheme, readThemeMode, VERIFY_STATUS_LABELS } from "@smartorder/shared";
 import AppIcon from "../components/AppIcon.vue";
 import { useCampusStore } from "../stores/campus";
 import { useOrderStore } from "../stores/orders";
-import { isSignedIn, signOut as signOutApi, userState } from "../stores/session";
-import { reportError } from "../utils/report";
+import { isSignedIn, setProfile, signOut as signOutApi, tokenStore, userState } from "../stores/session";
+import { reportError, toastOk } from "../utils/report";
 
 const router = useRouter();
 const orders = useOrderStore();
@@ -19,6 +21,129 @@ const dark = ref(readThemeMode() === "dark");
 
 const profile = computed(() => userState.value);
 const signedIn = computed(() => isSignedIn());
+const formOpen = ref(false);
+const saving = ref(false);
+const refreshing = ref(false);
+const formError = ref("");
+const fields = USER_PROFILE_FIELDS;
+const form = reactive<Required<UserProfileUpdate>>({ nickname: "", realName: "", phone: "", college: "", campusArea: "", dormBuilding: "" });
+let original = { ...form };
+const avatarInput = ref<HTMLInputElement | null>(null);
+const avatarFile = ref<File | null>(null);
+const avatarPreview = ref("");
+const avatarPreparing = ref(false);
+const avatarUploading = ref(false);
+const avatarLoading = computed(() => avatarPreparing.value || avatarUploading.value);
+const avatarBusy = computed(() => avatarLoading.value || avatarPreview.value !== "");
+let avatarRevision = 0;
+
+function clearAvatar(): void {
+  avatarRevision += 1;
+  if (avatarPreview.value) URL.revokeObjectURL(avatarPreview.value);
+  avatarPreview.value = "";
+  avatarFile.value = null;
+  avatarPreparing.value = false;
+  avatarUploading.value = false;
+  if (avatarInput.value) avatarInput.value.value = "";
+}
+
+function cancelAvatar(): void {
+  if (!avatarLoading.value) clearAvatar();
+}
+
+function selectAvatar(): void {
+  if (!signedIn.value || !profile.value || refreshing.value || saving.value || avatarBusy.value) return;
+  avatarInput.value?.click();
+}
+
+async function previewAvatar(event: Event): Promise<void> {
+  const input = event.target as HTMLInputElement;
+  const file = input.files?.[0];
+  input.value = "";
+  if (!file || !signedIn.value || !profile.value || refreshing.value || saving.value || avatarBusy.value) return;
+  const userId = profile.value.userId;
+  const revision = ++avatarRevision;
+  avatarPreparing.value = true;
+  try {
+    const prepared = await prepareAvatar(file);
+    if (revision !== avatarRevision || profile.value?.userId !== userId || !signedIn.value) return;
+    avatarPreview.value = URL.createObjectURL(prepared);
+    avatarFile.value = prepared;
+  } catch (error) {
+    if (revision === avatarRevision) reportError(error);
+  } finally {
+    if (revision === avatarRevision) avatarPreparing.value = false;
+  }
+}
+
+async function saveAvatar(): Promise<void> {
+  if (!avatarFile.value || !signedIn.value || !profile.value || avatarLoading.value || refreshing.value || saving.value) return;
+  const userId = profile.value.userId;
+  const revision = avatarRevision;
+  avatarUploading.value = true;
+  try {
+    const saved = await authApi.uploadAvatar(avatarFile.value);
+    if (revision !== avatarRevision || profile.value?.userId !== userId || !signedIn.value) return;
+    setProfile(saved);
+    toastOk("头像已更新");
+    clearAvatar();
+  } catch (error) {
+    if (revision === avatarRevision) reportError(error);
+  } finally {
+    if (revision === avatarRevision) avatarUploading.value = false;
+  }
+}
+
+watch(() => profile.value?.userId, clearAvatar, { flush: "sync" });
+onBeforeUnmount(clearAvatar);
+
+async function refreshProfile(): Promise<void> {
+  if (!signedIn.value || refreshing.value || saving.value || avatarBusy.value) return;
+  refreshing.value = true;
+  const access = tokenStore.access;
+  const userId = profile.value?.userId;
+  try {
+    const latest = await authApi.profile();
+    if (tokenStore.access === access && profile.value?.userId === userId && !avatarBusy.value) setProfile(latest);
+  } catch (error) {
+    reportError(error);
+  } finally {
+    refreshing.value = false;
+  }
+}
+
+function openEdit(): void {
+  if (!profile.value || refreshing.value || avatarBusy.value) return;
+  for (const field of fields) form[field.key] = profile.value[field.key];
+  original = { ...form };
+  formError.value = "";
+  formOpen.value = true;
+}
+
+async function saveProfile(): Promise<void> {
+  if (saving.value || avatarBusy.value) return;
+  formError.value = "";
+  let body: UserProfileUpdate;
+  try {
+    body = profileChanges(form, original);
+  } catch (error) {
+    formError.value = error instanceof Error ? error.message : "请检查填写的资料";
+    return;
+  }
+  saving.value = true;
+  const access = tokenStore.access;
+  try {
+    const saved = await authApi.updateProfile(body);
+    if (tokenStore.access !== access) return;
+    setProfile(saved);
+    formOpen.value = false;
+    toastOk("资料已保存");
+  } catch (error) {
+    reportError(error);
+  } finally {
+    saving.value = false;
+  }
+}
 
 const verifyText = computed(() => {
   const row = profile.value;
@@ -39,6 +164,7 @@ const links = [
   { name: "coupons", label: "优惠券", icon: "coupon" },
   { name: "address", label: "收货地址", icon: "pin" },
   { name: "favorites", label: "我的收藏", icon: "heart" },
+  { name: "my-reviews", label: "我的评价", icon: "comment" },
   { name: "notices", label: "消息通知", icon: "bell" },
 ] as const;
 
@@ -89,7 +215,10 @@ async function loadTotals(): Promise<void> {
   }
 }
 
+onActivated(() => { void refreshProfile(); });
+
 onMounted(() => {
+  void refreshProfile();
   void orders.refreshList();
   void loadCoupons();
   void loadTotals();
@@ -110,7 +239,13 @@ onMounted(() => {
 
     <section class="so-card" style="margin-bottom: 1.25rem">
       <div v-if="signedIn && profile !== null" class="so-row so-row--wrap" style="gap: 1.25rem">
-        <div class="so-avatar">{{ profile.nickname.slice(0, 1) }}</div>
+        <button type="button" class="so-avatar so-avatar--button" aria-label="修改头像" title="修改头像"
+          :disabled="refreshing || saving || avatarBusy" :aria-busy="avatarLoading" @click="selectAvatar">
+          <SoImage v-if="profile.avatarUrl" :src="profile.avatarUrl" alt="我的头像" img-class="so-avatar__image" icon="user" />
+          <span v-else>{{ profile.nickname.slice(0, 1) }}</span>
+        </button>
+        <input ref="avatarInput" type="file" accept="image/jpeg,image/png,image/webp" hidden
+          :disabled="refreshing || saving || avatarBusy" @change="previewAvatar" />
         <div class="so-grow">
           <div class="so-row" style="gap: 0.5rem">
             <p class="so-strong" style="font-size: 1.15rem">{{ profile.nickname }}</p>
@@ -118,6 +253,8 @@ onMounted(() => {
           </div>
           <p class="so-hint">学号 {{ profile.studentNo === "" ? "未绑定" : profile.studentNo }}</p>
           <p class="so-hint">{{ profile.college === "" ? "" : `${profile.college} · ` }}{{ profile.campusArea }}</p>
+          <p v-if="profile.verifyStatus === 3 && profile.verifyNote" class="so-hint">认证驳回：{{ profile.verifyNote }}</p>
+          <button class="so-link" type="button" :disabled="refreshing || avatarBusy" @click="openEdit">编辑资料</button>
         </div>
         <div class="so-row" style="gap: 2rem">
           <div>
@@ -214,5 +351,36 @@ onMounted(() => {
         </div>
       </section>
     </div>
+    <SoModal :open="avatarPreview !== ''" title="修改头像" @close="cancelAvatar">
+      <div class="so-stack" :aria-busy="avatarLoading">
+        <SoImage :src="avatarPreview" alt="头像预览" img-class="so-avatar-preview" icon="user" />
+        <p class="so-hint">图片已居中裁剪为 256 × 256 的正方形，保存后更新头像。</p>
+      </div>
+      <template #foot>
+        <button type="button" class="so-btn so-btn--ghost" :disabled="avatarLoading" @click="cancelAvatar">取消</button>
+        <button type="button" class="so-btn so-btn--primary" :disabled="avatarLoading" @click="saveAvatar">{{ avatarUploading ? '保存中…' : '保存' }}</button>
+      </template>
+    </SoModal>
+    <SoModal :open="formOpen" title="编辑个人资料" @close="!saving && (formOpen = false)">
+      <form class="so-stack" @submit.prevent="saveProfile">
+        <p class="so-hint">真实姓名、学院或校区变更后需重新审核。认证被拒后保存将重新提交审核。</p>
+        <label class="so-field">
+          <span class="so-field__label">学号（不可修改）</span>
+          <input class="so-input" :value="profile?.studentNo" readonly />
+        </label>
+        <label v-for="field in fields" :key="field.key" class="so-field">
+          <span class="so-field__label">{{ field.label }}</span>
+          <input v-model="form[field.key]" class="so-input" :maxlength="field.max" :disabled="saving"
+            :inputmode="field.key === 'phone' ? 'tel' : 'text'"
+            :list="field.key === 'campusArea' ? 'profile-campus-options' : undefined" />
+        </label>
+        <datalist id="profile-campus-options"><option v-for="area in campus.areas" :key="area" :value="area" /></datalist>
+        <p v-if="formError" class="so-hint" role="alert">{{ formError }}</p>
+        <div class="so-row" style="justify-content: flex-end">
+          <button type="button" class="so-btn so-btn--ghost" :disabled="saving" @click="formOpen = false">取消</button>
+          <button type="submit" class="so-btn so-btn--primary" :disabled="saving">{{ saving ? '保存中…' : '保存资料' }}</button>
+        </div>
+      </form>
+    </SoModal>
   </div>
 </template>

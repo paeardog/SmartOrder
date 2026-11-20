@@ -7,10 +7,12 @@ import {
   orderHero,
   orders as ordersApi,
   payCountdownOf,
+  reviews as reviewsApi,
   stepIndexOf,
   takeWaitOf,
   type OrderActionKey,
   type OrderDetail,
+  type ReviewDto,
 } from "@smartorder/api-client";
 import { formatDateTime, formatYuan } from "@smartorder/shared";
 import AppIcon from "../components/AppIcon.vue";
@@ -30,8 +32,22 @@ const orders = useOrderStore();
 
 const orderNo = computed(() => String(route.params["orderNo"] ?? ""));
 const detail = ref<OrderDetail | null>(null);
+const review = ref<ReviewDto | null>(null);
+const reviewLoading = ref(false);
 const loading = ref(true);
 const failed = ref("");
+
+const SCORE_TEXT: Record<number, string> = {
+  1: "很差",
+  2: "不太行",
+  3: "一般",
+  4: "满意",
+  5: "很满意",
+};
+
+function scoreText(score: number): string {
+  return SCORE_TEXT[score] ?? "未评分";
+}
 const cancelOpen = ref(false);
 const tick = ref(Date.now());
 
@@ -80,8 +96,28 @@ async function load(): Promise<void> {
     }
     detail.value = next;
     failed.value = "";
+    review.value = null;
+    if (next.status === "COMPLETED") {
+      void loadReview();
+    }
   } finally {
     loading.value = false;
+  }
+}
+
+async function loadReview(): Promise<void> {
+  reviewLoading.value = true;
+  try {
+    const next = await reviewsApi.byOrder(orderNo.value);
+    review.value = next;
+    if (next !== null) {
+      orders.markReviewed(orderNo.value);
+    }
+  } catch (error) {
+    reportError(error);
+    review.value = null;
+  } finally {
+    reviewLoading.value = false;
   }
 }
 
@@ -141,6 +177,18 @@ function goShop(): void {
   void router.push({ name: "merchant", params: { id: row.merchantId } });
 }
 
+function goMerchantReviews(): void {
+  if (detail.value !== null) {
+    void router.push({ name: "merchant-reviews", params: { id: detail.value.merchantId } });
+  }
+}
+
+function goDish(dishId: string): void {
+  if (dishId !== "") {
+    void router.push({ name: "dish", params: { id: dishId } });
+  }
+}
+
 watch(
   () => detail.value?.status,
   (status) => {
@@ -191,7 +239,7 @@ onBeforeUnmount(() => {
               <StatusTag :status="detail.status" />
             </div>
             <p class="so-hero__hint">{{ hero?.hint }}</p>
-            <p v-if="waitText !== '' && step >= 1 && step <= 2" class="so-hint">{{ waitText }}</p>
+            <p v-if="waitText !== '' && step >= 1 && step <= 2 && waitText !== hero?.hint" class="so-hint">{{ waitText }}</p>
             <p v-if="detail.status === 'PENDING_PAYMENT' && !payLeft.expired" class="so-hint">
               剩余支付时间 {{ payLeft.text }}
             </p>
@@ -227,6 +275,64 @@ onBeforeUnmount(() => {
         </div>
       </section>
 
+      <section v-if="detail.status === 'COMPLETED'" class="so-card" style="margin-bottom: 1.25rem">
+        <div class="so-card__header">
+          <h2 class="so-card__title">我的评价</h2>
+          <span v-if="review !== null" class="so-hint">{{ formatDateTime(review.createdAt, true) }}</span>
+        </div>
+
+        <div v-if="reviewLoading" class="so-loading"><span class="so-spinner" />正在加载评价</div>
+
+        <div v-else-if="review === null" class="ord-review__empty">
+          <p>这一单还没有评价</p>
+          <button class="so-btn so-btn--primary" type="button" @click="act('review')">去评价</button>
+        </div>
+
+        <template v-else>
+          <div class="ord-review__rating">
+            <div class="so-rate">
+              <span
+                v-for="value in 5"
+                :key="value"
+                class="so-rate__star"
+                :class="{ 'so-rate__star--on': value <= review.ratingScore }"
+                :aria-label="`${value} 星`"
+              >
+                <AppIcon name="star" :size="17" />
+              </span>
+            </div>
+            <b>{{ scoreText(review.ratingScore) }}</b>
+            <span v-if="review.anonymous" class="so-tag">匿名评价</span>
+          </div>
+
+          <div class="ord-review__scores">
+            <span>口味 <b>{{ scoreText(review.tasteScore) }}</b></span>
+            <span>出餐速度 <b>{{ scoreText(review.speedScore) }}</b></span>
+          </div>
+
+          <div v-if="review.tags.length > 0" class="so-chips" style="margin-top: 0.6rem">
+            <span v-for="tag in review.tags" :key="tag" class="so-tag">{{ tag }}</span>
+          </div>
+
+          <p v-if="review.content !== ''" class="ord-review__content">{{ review.content }}</p>
+
+          <div v-if="review.images.length > 0" class="ord-review__images">
+            <div v-for="(image, index) in review.images" :key="index" class="ord-review__image">
+              <SoImage :src="image" :alt="`评价图片 ${index + 1}`" icon="store" />
+            </div>
+          </div>
+
+          <div v-if="review.replyContent !== ''" class="ord-review__reply">
+            <b>档口回复</b>{{ review.replyContent }}
+          </div>
+
+          <button class="so-link ord-review__all" type="button" @click="goMerchantReviews">
+            查看该店全部评价
+            <AppIcon name="right" :size="14" />
+          </button>
+        </template>
+      </section>
+
       <div class="so-grid so-grid--2" style="align-items: start">
         <div class="so-stack">
           <section class="so-card">
@@ -234,7 +340,17 @@ onBeforeUnmount(() => {
               <h2 class="so-card__title">商品明细</h2>
               <span class="so-hint">共 {{ detail.itemCount }} 件</span>
             </div>
-            <div v-for="item in detail.items" :key="item.itemId" class="so-row so-row--top" style="gap: 0.9rem; padding: 0.75rem 0">
+            <div
+              v-for="item in detail.items"
+              :key="item.itemId"
+              class="so-row so-row--top so-order-item"
+              :class="{ 'so-order-item--link': item.dishId !== '' }"
+              :role="item.dishId !== '' ? 'button' : undefined"
+              :tabindex="item.dishId !== '' ? 0 : undefined"
+              style="gap: 0.9rem; padding: 0.75rem 0"
+              @click="goDish(item.dishId)"
+              @keydown.enter="goDish(item.dishId)"
+            >
               <SoImage :src="item.dishImage" :alt="item.dishName" img-class="so-order-card__thumb" />
               <div class="so-grow">
                 <p class="so-strong">{{ item.dishName }}</p>
@@ -335,3 +451,100 @@ onBeforeUnmount(() => {
     />
   </div>
 </template>
+
+<style scoped>
+.ord-review__empty {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  padding: 0.5rem 0;
+  color: var(--muted);
+  font-size: 0.82rem;
+}
+
+.ord-review__empty p {
+  margin: 0;
+}
+
+.ord-review__rating {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+}
+
+.ord-review__rating b {
+  color: var(--caution);
+  font-size: 0.85rem;
+}
+
+.ord-review__scores {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem 1rem;
+  margin-top: 0.55rem;
+  color: var(--muted);
+  font-size: 0.76rem;
+}
+
+.ord-review__scores b {
+  color: var(--content-meta);
+  font-weight: var(--font-weight-semibold);
+}
+
+.ord-review__content {
+  margin: 0.8rem 0 0;
+  color: var(--deep-text);
+  font-size: 0.86rem;
+  line-height: 1.65;
+  white-space: pre-wrap;
+}
+
+.ord-review__images {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  margin-top: 0.6rem;
+}
+
+.ord-review__image {
+  width: 72px;
+  height: 72px;
+  border-radius: var(--control-radius);
+  overflow: hidden;
+  background: var(--btn-regular-bg);
+}
+
+.ord-review__image :deep(img),
+.ord-review__image :deep(span) {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: grid;
+  place-items: center;
+}
+
+.ord-review__reply {
+  margin-top: 0.7rem;
+  padding: 0.6rem 0.8rem;
+  color: var(--content-meta);
+  background: var(--muted-soft);
+  border-radius: 8px;
+  font-size: 0.78rem;
+  line-height: 1.6;
+}
+
+.ord-review__reply b {
+  display: block;
+  margin-bottom: 0.2rem;
+  color: var(--primary);
+  font-size: 0.72rem;
+}
+
+.ord-review__all {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.2rem;
+  margin-top: 0.85rem;
+  font-size: 0.75rem;
+}
+</style>

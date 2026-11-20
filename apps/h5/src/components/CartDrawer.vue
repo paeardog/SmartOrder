@@ -40,11 +40,15 @@
             <van-icon v-if="item.selected" name="success" />
           </button>
 
-          <ArtImage class="line__art" :src="item.dishImage" :name="item.dishName" radius="12px" />
+          <button type="button" class="line__art" aria-label="查看商品详情" @click="goDetail(item)">
+            <ArtImage :src="item.dishImage" :name="item.dishName" radius="12px" />
+          </button>
 
-          <button type="button" class="line__body" @click="emit('edit', item)">
-            <span class="line__name">{{ item.dishName }}</span>
-            <span class="line__spec">{{ item.optionText === "" ? "默认规格" : item.optionText }}</span>
+          <div class="line__body">
+            <button type="button" class="line__link" @click="goDetail(item)">
+              <span class="line__name">{{ item.dishName }}</span>
+              <span class="line__spec">{{ item.optionText === "" ? "默认规格" : item.optionText }}</span>
+            </button>
             <span v-if="noteOf(item) !== ''" class="line__note">备注：{{ noteOf(item) }}</span>
             <span v-if="reasonOf(item) !== ''" class="line__reason">{{ reasonOf(item) }}</span>
             <span class="line__price">
@@ -54,8 +58,9 @@
                 <span class="so-price__dec">.{{ linePrice(item).cents }}</span>
               </span>
               <span v-if="item.optionText !== ''" class="line__unit">¥{{ yuanText(item.unitPrice) }}/份</span>
+              <button type="button" class="line__edit" @click="emit('edit', item)">改规格</button>
             </span>
-          </button>
+          </div>
 
           <div class="line__step">
             <button type="button" class="line__btn" v-on="bindingFor(item).minus" aria-label="减少">−</button>
@@ -81,7 +86,7 @@
         </div>
         <p class="drawer__tip">
           <van-icon name="info-o" />
-          点击商品可修改规格，同规格自动合并，不同规格分行
+          点击商品可看详情，改规格点名称旁按钮；同规格自动合并
         </p>
       </div>
     </div>
@@ -90,6 +95,7 @@
 
 <script setup lang="ts">
 import { computed, watch } from "vue";
+import { useRouter } from "vue-router";
 import { showConfirmDialog } from "vant";
 import type { CartItem } from "@smartorder/api-client";
 import ArtImage from "./ArtImage.vue";
@@ -108,6 +114,7 @@ const emit = defineEmits<{
   (event: "edit", item: CartItem): void;
 }>();
 
+const router = useRouter();
 const cart = useCartStore();
 const notes = useNotesStore();
 const bindings = new Map<string, { plus: LongPressBinding; minus: LongPressBinding }>();
@@ -137,6 +144,14 @@ function linePrice(item: CartItem) {
 
 function close(value: boolean): void {
   emit("update:show", value);
+}
+
+function goDetail(item: CartItem): void {
+  if (item.dishId === "") {
+    return;
+  }
+  close(false);
+  void router.push({ name: "dish", params: { id: item.dishId } });
 }
 
 function toggle(item: CartItem): void {
@@ -300,6 +315,16 @@ async function removeInvalid(): Promise<void> {
 }
 
 .line__art {
+  display: block;
+  width: 54px;
+  height: 54px;
+  padding: 0;
+  background: transparent;
+  border: 0;
+  cursor: pointer;
+}
+
+.line__art :deep(.art-image) {
   width: 54px;
   height: 54px;
 }
@@ -311,16 +336,44 @@ async function removeInvalid(): Promise<void> {
   gap: 0.15rem;
   min-width: 0;
   padding: 0;
-  background: transparent;
-  border: 0;
   font: inherit;
   text-align: left;
 }
 
+.line__link {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.15rem;
+  max-width: 100%;
+  min-width: 0;
+  padding: 0;
+  background: transparent;
+  border: 0;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
 .line__name {
+  max-width: 100%;
+  overflow: hidden;
   color: var(--deep-text);
   font-size: 0.88rem;
   font-weight: var(--font-weight-semibold);
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.line__edit {
+  flex: none;
+  margin-left: 0.4rem;
+  padding: 0.1rem 0.35rem;
+  color: var(--primary);
+  background: var(--primary-soft);
+  border: 0;
+  border-radius: 5px;
+  font-size: 0.6rem;
 }
 
 .line__spec,

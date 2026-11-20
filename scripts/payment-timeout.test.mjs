@@ -37,6 +37,21 @@ for (const [seconds, text] of [[1, '1 秒'], [30, '30 秒'], [60, '1 分钟'], [
   });
 }
 
+test('时长格式化按需保留秒数，整分钟显式补零', () => {
+  const { formatDurationSeconds } = execute(
+    readFileSync(new URL('../packages/shared/src/time.ts', import.meta.url), 'utf8'),
+    'time.ts', {},
+  );
+  assert.equal(formatDurationSeconds(45), '45 秒');
+  assert.equal(formatDurationSeconds(60), '1 分');
+  assert.equal(formatDurationSeconds(60, true), '1 分 0 秒');
+  assert.equal(formatDurationSeconds(125, true), '2 分 5 秒');
+  assert.equal(formatDurationSeconds(125), '2 分');
+  assert.equal(formatDurationSeconds(3600, true), '1 小时');
+  assert.equal(formatDurationSeconds(3665, true), '1 小时 1 分 5 秒');
+  assert.equal(formatDurationSeconds(3665), '1 小时 1 分');
+});
+
 test('预检未返回或时间不可用时不猜测支付期限', () => {
   for (const value of [null, { serverTime: '', expireAt: '' }, { serverTime: 'invalid', expireAt: 'invalid' }, preflight(0), preflight(-60)]) {
     assert.equal(payTimeoutHint(value), '下单后请及时完成支付，支付时限以订单倒计时为准，超时订单会自动关闭。');
@@ -53,7 +68,7 @@ test('结算页提示随预检变化更新，不沿用旧时限', (t) => {
     vue: { ...vue, onMounted() {} },
     'vue-router': { useRouter: () => ({}) },
     '@smartorder/api-client': { payTimeoutHint },
-    '@smartorder/shared': { createClientOrderNo: () => 'test' },
+    '@smartorder/shared': { createClientOrderNo: () => 'test', readPickupContact: () => null },
     '../components/AppIcon.vue': {},
     '../components/EmptyState.vue': {},
     '../components/SoImage.vue': {},
