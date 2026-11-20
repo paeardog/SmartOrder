@@ -117,7 +117,8 @@ import EmptyState from "../components/EmptyState.vue";
 import StatusTag from "../components/StatusTag.vue";
 import { useCartStore } from "../stores/cart";
 import { useOrderStore } from "../stores/orders";
-import { cachePeek, cacheWrite } from "../utils/cache";
+import { tokenStore } from "../stores/session";
+import { cachePeek, cacheWrite, userScope } from "../utils/cache";
 import { orderActions, type OrderActionKey } from "../utils/orderActions";
 import { minutesToText, yuanText } from "../utils/format";
 import { announceReorder, rebuildCart } from "../utils/reorder";
@@ -170,7 +171,7 @@ const empty = computed(() => {
 });
 
 function scopeOf(tab: TabKey, targetPage: number): string {
-  return `orders.${tab}.${targetPage}`;
+  return userScope(`orders.${tab}.${targetPage}`, tokenStore.profile?.userId);
 }
 
 function statusLabel(status: OrderStatus): string {

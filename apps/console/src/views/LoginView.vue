@@ -80,9 +80,10 @@ function useDemo(name: string): void {
         <div class="login__demo-row">
           <button class="so-btn so-btn--ghost so-btn--sm" type="button" @click="useDemo('chuanxiang')">档口老板</button>
           <button class="so-btn so-btn--ghost so-btn--sm" type="button" @click="useDemo('chuanxiang02')">档口店员</button>
+          <button class="so-btn so-btn--ghost so-btn--sm" type="button" @click="useDemo('merchant9020')">样本档口</button>
           <button class="so-btn so-btn--ghost so-btn--sm" type="button" @click="useDemo('admin')">平台运营</button>
         </div>
-        <p class="so-field__hint">演示账号对应 sys_account 种子数据，密码统一为 demo123456。</p>
+        <p class="so-field__hint">演示账号对应 sys_account 种子与样本导入数据，密码统一为 demo123456；样本档口账号格式为 merchant加档口ID。</p>
       </div>
     </form>
   </div>

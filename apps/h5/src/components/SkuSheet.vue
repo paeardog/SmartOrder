@@ -190,8 +190,8 @@ const inCartOther = computed(() => {
   if (!props.dish) {
     return 0;
   }
-  const sameLine = editing.value && editing.value.optionHash === currentHash.value ? editing.value.quantity : 0;
-  return Math.max(0, cart.quantityOf(props.dish.dishId) - sameLine);
+  const editingQuantity = editing.value ? editing.value.quantity : 0;
+  return Math.max(0, cart.quantityOf(props.dish.dishId) - editingQuantity);
 });
 
 const guard = computed(() =>

@@ -79,6 +79,7 @@ async function createApp(app) {
     vue,
     '@smartorder/api-client': api,
     '@smartorder/shared': api.shared,
+    '../utils/cache': { dropUserCache() {} },
   });
   const routes = [];
   const router = {
@@ -267,6 +268,7 @@ test('H5 真实 Checkout setup：失败重试复用幂等键、保留提交锁�
       items: [{ cartItemId: '2', selected: true, quantity: 1 }],
     },
     clear: async () => { cleared += 1; },
+    refresh: async () => { cleared += 1; },
   };
   const component = loadComponent('apps/h5/src/views/CheckoutView.vue', {
     vue: { ...vue, onMounted() {}, onUnmounted: (callback) => { unmounts.push(callback); } },
@@ -284,7 +286,7 @@ test('H5 真实 Checkout setup：失败重试复用幂等键、保留提交锁�
     '../stores/cart': { useCartStore: () => cart },
     '../stores/coupons': { useCouponStore: () => ({ selectedId: '', reset() {} }) },
     '../stores/dining': { useDiningStore: () => ({ mode: 'PICKUP', remarkWith: (text) => text }), fulfillmentOf: () => 'PICKUP' },
-    '../stores/notes': { useNotesStore: () => ({ clearFor() {} }) },
+    '../stores/notes': { useNotesStore: () => ({ clearFor() {}, noteOf: () => '', remarkFor: () => '' }) },
     '../stores/orders': { useOrderStore: () => ({ upsertActive: (order) => { activeOrders.push(order); } }) },
     '../stores/session': session,
     '../utils/cache': { cachePeek: () => null },
@@ -415,6 +417,7 @@ test('H5 配送身份随会话持久化，刷新保留身份，切回学生与�
     vue,
     '@smartorder/api-client': api,
     '@smartorder/shared': api.shared,
+    '../utils/cache': { dropUserCache() {} },
   });
   assert.equal(restored.tokenStore.role, 'rider');
   assert.equal(restored.tokenStore.access, 'rider-new');
@@ -483,12 +486,13 @@ test('H5 配送订单隐藏自取码并保留配送员取餐时间线', () => {
     vue: { ...vue, onMounted() {}, onUnmounted() {} },
     'vue-router': { useRouter: () => ({}) },
     '@smartorder/api-client': {},
-    '@smartorder/shared': {},
+    '@smartorder/shared': { isTerminal: () => false },
     '../components/ArtImage.vue': {},
     '../components/EmptyState.vue': {},
     '../stores/cart': { useCartStore: () => ({}) },
-    '../stores/orders': { useOrderStore: () => ({}) },
-    '../utils/cache': {},
+    '../stores/orders': { useOrderStore: () => ({ detail: vue.ref({}) }) },
+    '../stores/session': { tokenStore: { access: '', profile: null } },
+    '../utils/cache': { cachePeek: () => null, cacheWrite() {}, userScope: (scope) => scope },
     '../utils/format': {},
     '../utils/orderActions': {},
     '../utils/reorder': {},

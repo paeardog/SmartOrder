@@ -175,9 +175,9 @@ function combinationFixture(delta) {
   return copy;
 }
 
-test('静态源数据：七张表、40 张 JPEG、45 道限量菜的三天库存', () => {
+test('静态源数据：七张表、88 张 JPEG、45 道限量菜的三天库存', () => {
   const original = structuredClone(catalog);
-  assert.deepEqual(validateCatalog(catalog), { ...expectedCounts, images: 40 });
+  assert.deepEqual(validateCatalog(catalog), { ...expectedCounts, images: 88 });
   assert.deepEqual(catalog, original);
   assert.equal(catalog.tables.m_dish.filter(row => row.stock_mode === 1).length, 45);
   for (const dish of catalog.tables.m_dish.filter(row => row.stock_mode === 1)) {
@@ -192,7 +192,7 @@ test('拒绝跨规格组累计为负的价格组合，而非只校验单项', ()
 });
 
 test('接受最低组合恰好为零的负差价', () => {
-  assert.deepEqual(validateCatalog(combinationFixture(-50)), { ...expectedCounts, images: 40 });
+  assert.deepEqual(validateCatalog(combinationFixture(-50)), { ...expectedCounts, images: 88 });
 });
 
 test('拒绝可选多选加料累计为负的价格组合', () => {

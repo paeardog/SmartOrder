@@ -12,7 +12,7 @@
         :aria-label="favorited ? '取消收藏' : '收藏'"
         @click.stop="toggleFav"
       >
-        <van-icon :name="favorited ? 'heart' : 'heart-o'" />
+        <HeartIcon :filled="favorited" />
       </button>
     </div>
 
@@ -72,6 +72,7 @@ import { computed } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import type { DishSummary } from "@smartorder/api-client";
 import ArtImage from "./ArtImage.vue";
+import HeartIcon from "./HeartIcon.vue";
 import { priceParts, soldText, yuanText } from "../utils/format";
 import { blockedGroups, isMultiSpec } from "../utils/sku";
 import { useFavoritesStore } from "../stores/favorites";

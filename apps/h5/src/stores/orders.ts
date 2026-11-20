@@ -1,12 +1,24 @@
-import { computed, ref } from "vue";
+import { computed, ref, watch } from "vue";
 import { orders as ordersApi, OrderStream, type OrderDetail, type OrderSummary } from "@smartorder/api-client";
 import { defineStore } from "pinia";
 import { readJson, STORAGE_KEYS, writeJson } from "@smartorder/shared";
 import { reportError } from "../utils/report";
+import { tokenStore } from "./session";
+
+function activeKey(): string {
+  return `${STORAGE_KEYS.activeOrders}.${tokenStore.profile?.userId ?? "guest"}`;
+}
 
 export const useOrderStore = defineStore("orders", () => {
   const list = ref<OrderSummary[]>([]);
-  const active = ref<OrderSummary[]>(readJson<OrderSummary[]>(STORAGE_KEYS.activeOrders) ?? []);
+  const active = ref<OrderSummary[]>(readJson<OrderSummary[]>(activeKey()) ?? []);
+
+  watch(
+    () => tokenStore.profile?.userId,
+    () => {
+      active.value = readJson<OrderSummary[]>(activeKey()) ?? [];
+    },
+  );
   const detail = ref<Record<string, OrderDetail>>({});
   const stream = ref<OrderStream | null>(null);
   const connected = ref(false);
@@ -20,7 +32,7 @@ export const useOrderStore = defineStore("orders", () => {
   });
 
   function saveActive(): void {
-    writeJson(STORAGE_KEYS.activeOrders, active.value);
+    writeJson(activeKey(), active.value);
   }
 
   function replaceActive(next: OrderSummary[]): void {

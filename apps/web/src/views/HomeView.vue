@@ -1,9 +1,10 @@
 <script setup lang="ts">
 import { computed, onMounted, ref, watch } from "vue";
 import { useRouter } from "vue-router";
-import { catalog, type DishSummary, type MerchantSummary, type PickupPoint } from "@smartorder/api-client";
+import { catalog, slidesFromMerchants, type BannerSlide, type DishSummary, type MerchantSummary, type PickupPoint } from "@smartorder/api-client";
 import { formatYuan } from "@smartorder/shared";
 import AppIcon from "../components/AppIcon.vue";
+import BannerCarousel from "../components/BannerCarousel.vue";
 import EmptyState from "../components/EmptyState.vue";
 import MerchantCard from "../components/MerchantCard.vue";
 import StatusTag from "../components/StatusTag.vue";
@@ -43,6 +44,8 @@ const greeting = computed(() => {
   }
   return "晚上好，晚餐想吃什么";
 });
+
+const slides = computed(() => slidesFromMerchants(merchants.value));
 
 const visible = computed(() => merchants.value.filter((item) => category.value === "" || item.categoryName === category.value));
 const openMerchants = computed(() => visible.value.filter((item) => item.open));
@@ -109,6 +112,10 @@ function openOrder(orderNo: string): void {
   void router.push({ name: "order", params: { orderNo } });
 }
 
+function openSlide(slide: BannerSlide): void {
+  void router.push({ name: "merchant", params: { id: slide.merchantId } });
+}
+
 watch(
   () => campus.area,
   () => {
@@ -118,10 +125,13 @@ watch(
 
 onMounted(() => {
   void load();
-  void orders.refreshList();
-  void cart.refresh();
   if (tokenStore.access !== "") {
+    void orders.refreshList();
     void orders.refreshReviewed();
+    void cart.refresh();
+  } else {
+    orders.replaceActive([]);
+    cart.reset();
   }
 });
 </script>
@@ -136,6 +146,8 @@ onMounted(() => {
         </p>
       </div>
     </header>
+
+    <BannerCarousel v-if="slides.length > 0" :items="slides" @select="openSlide" />
 
     <section v-if="activeOrders.length > 0" class="so-card">
       <div class="so-card__header">

@@ -111,7 +111,7 @@ export function validateCatalog(catalog) {
     }
     assert(minimum >= 0, `${dish.name} 最低组合价格为负`);
   }
-  assert.equal(imageUrls.size, 40, '实拍图片数量不符');
+  assert.equal(imageUrls.size, 88, '实拍图片数量不符');
   return { ...COUNTS, images: imageUrls.size };
 }
 

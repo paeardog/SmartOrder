@@ -48,9 +48,10 @@ function mount(t, api = {}, { failedSources = [], decode = () => Promise.resolve
   const component = execute(compiled, filename, {
     vue: { ...vue, onMounted() {} },
     'vue-router': { useRouter: () => ({ push() {} }) },
-    '@smartorder/api-client': { catalog },
+    '@smartorder/api-client': { catalog, slidesFromMerchants: () => [] },
     '@smartorder/shared': { formatYuan: (value) => String(value) },
     '../components/AppIcon.vue': {},
+    '../components/BannerCarousel.vue': {},
     '../components/EmptyState.vue': {},
     '../components/MerchantCard.vue': {},
     '../components/StatusTag.vue': {},

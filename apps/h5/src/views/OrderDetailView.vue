@@ -3,7 +3,7 @@
     <van-nav-bar title="订单详情" left-arrow @click-left="router.back()">
       <template #right>
         <button type="button" class="detail-refresh" aria-label="刷新" @click="reload">
-          <van-icon name="renew" size="17" :class="{ 'is-spinning': refreshing }" />
+          <van-icon name="replay" size="17" :class="{ 'is-spinning': refreshing }" />
         </button>
       </template>
     </van-nav-bar>
@@ -162,15 +162,16 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, onUnmounted, ref } from "vue";
+import { computed, onMounted, onUnmounted, ref, watch } from "vue";
 import { useRouter } from "vue-router";
 import { orders as ordersApi, reviews as reviewsApi, type OrderDetail, type OrderStatus, type OrderStatusLogDto } from "@smartorder/api-client";
-import { ORDER_STATUS_LABELS, formatCountdown, serverNowMs, type PaymentChannel, type PaymentStatus, type RefundStatus } from "@smartorder/shared";
+import { ORDER_STATUS_LABELS, formatCountdown, isTerminal, serverNowMs, type PaymentChannel, type PaymentStatus, type RefundStatus } from "@smartorder/shared";
 import ArtImage from "../components/ArtImage.vue";
 import EmptyState from "../components/EmptyState.vue";
 import { useCartStore } from "../stores/cart";
 import { useOrderStore } from "../stores/orders";
-import { cachePeek, cacheWrite } from "../utils/cache";
+import { tokenStore } from "../stores/session";
+import { cachePeek, cacheWrite, userScope } from "../utils/cache";
 import { minutesToText, maskPhone, yuanText } from "../utils/format";
 import { cancelCountdownOf, orderActions, orderHero, stepIndexOf, type OrderActionKey } from "../utils/orderActions";
 import { announceReorder, rebuildCart } from "../utils/reorder";
@@ -195,6 +196,17 @@ let poller: number | null = null;
 let alive = true;
 let requestSequence = 0;
 let inFlight = false;
+
+watch(
+  () => orderStore.detail[props.orderNo],
+  (next) => {
+    if (!next || !alive) {
+      return;
+    }
+    detail.value = next;
+    cacheWrite(userScope(`order.${props.orderNo}`, tokenStore.profile?.userId), next, 24 * 60 * 60_000);
+  },
+);
 
 const reasonActions = REASONS.map((name) => ({ name }));
 
@@ -341,7 +353,7 @@ async function load(showSkeleton: boolean): Promise<void> {
     if (!alive || mine !== requestSequence) return;
     detail.value = next;
     orderStore.upsertDetail(next);
-    cacheWrite(`order.${props.orderNo}`, next, 24 * 60 * 60_000);
+    cacheWrite(userScope(`order.${props.orderNo}`, tokenStore.profile?.userId), next, 24 * 60 * 60_000);
     offlineText.value = "";
     if (next.status === "COMPLETED") {
       const review = await reviewsApi.byOrder(next.orderNo);
@@ -352,7 +364,7 @@ async function load(showSkeleton: boolean): Promise<void> {
   } catch (error) {
     if (!alive || mine !== requestSequence) return;
     if (detail.value === null) {
-      const cached = cachePeek<OrderDetail>(`order.${props.orderNo}`);
+      const cached = cachePeek<OrderDetail>(userScope(`order.${props.orderNo}`, tokenStore.profile?.userId));
       if (cached !== null) {
         detail.value = cached;
         offlineText.value = cached.fulfillmentType === "DELIVERY" ? "现在是离线内容，配送进度请联网后刷新" : "现在是离线内容，取餐码依然可以给店员看";
@@ -429,7 +441,7 @@ async function onReason(action: { name: string }): Promise<void> {
     const next = await ordersApi.cancel(detail.value.orderNo, action.name);
     detail.value = next;
     orderStore.upsertDetail(next);
-    cacheWrite(`order.${props.orderNo}`, next, 24 * 60 * 60_000);
+    cacheWrite(userScope(`order.${props.orderNo}`, tokenStore.profile?.userId), next, 24 * 60 * 60_000);
     toastText(next.status === "CANCELLED" ? "订单已取消" : "已提交，稍后刷新查看");
   } catch (error) {
     reportError(error);
@@ -437,7 +449,7 @@ async function onReason(action: { name: string }): Promise<void> {
 }
 
 onMounted(async () => {
-  const cached = cachePeek<OrderDetail>(`order.${props.orderNo}`);
+  const cached = cachePeek<OrderDetail>(userScope(`order.${props.orderNo}`, tokenStore.profile?.userId));
   if (cached !== null) {
     detail.value = cached;
     offlineText.value = "先显示上次的内容";
@@ -446,7 +458,7 @@ onMounted(async () => {
   if (!alive) return;
   ticker = window.setInterval(tick, 1000);
   poller = window.setInterval(() => {
-    if (document.visibilityState === "visible" && detail.value && (["PENDING_PAYMENT", "PAID", "ACCEPTED", "COOKING"].includes(detail.value.status) || (isDelivery.value && detail.value.status === "READY"))) {
+    if (document.visibilityState === "visible" && detail.value && !isTerminal(detail.value.status)) {
       void load(false);
     }
   }, 15_000);

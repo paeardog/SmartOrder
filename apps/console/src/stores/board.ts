@@ -60,6 +60,7 @@ let stream: OrderStream | null = null;
 let flashTimer: number | null = null;
 let signature = "";
 let waitingBaseline = 0;
+const failedColumns = new Set<BoardStatus>();
 
 export const waitingCount = (): number => countOf("PAID");
 
@@ -74,19 +75,35 @@ function signatureOf(summary: MerchantBoardSummary): string {
   return `${summary.newestOrderNo}|${parts.join(",")}`;
 }
 
-async function loadColumn(status: BoardStatus): Promise<void> {
+async function loadColumn(status: BoardStatus): Promise<boolean> {
   board.loading[status] = true;
   try {
     const page = await merchant.orders({ status, pageSize: 60 });
     board.columns[status] = page.list;
+    return true;
   } catch (error) {
     if (error instanceof ApiError && error.unauthorized) {
-      return;
+      return false;
     }
     board.failures += 1;
+    return false;
   } finally {
     board.loading[status] = false;
   }
+}
+
+async function loadColumns(): Promise<boolean> {
+  const results = await Promise.all(
+    BOARD_STATUSES.map(async (status) => [status, await loadColumn(status)] as const),
+  );
+  for (const [status, ok] of results) {
+    if (ok) {
+      failedColumns.delete(status);
+    } else {
+      failedColumns.add(status);
+    }
+  }
+  return failedColumns.size === 0;
 }
 
 async function loadAll(): Promise<void> {
@@ -94,10 +111,12 @@ async function loadAll(): Promise<void> {
   try {
     const summary = await merchant.boardSummary();
     board.summary = summary;
-    signature = signatureOf(summary);
-    waitingBaseline = summary.counts.PAID ?? 0;
-    await Promise.all(BOARD_STATUSES.map((status) => loadColumn(status)));
-    board.failures = 0;
+    const nextWaiting = summary.counts.PAID ?? 0;
+    if (await loadColumns()) {
+      signature = signatureOf(summary);
+      waitingBaseline = nextWaiting;
+      board.failures = 0;
+    }
   } catch (error) {
     if (!(error instanceof ApiError) || !error.unauthorized) {
       board.failures += 1;
@@ -152,11 +171,14 @@ export async function sync(): Promise<void> {
     const next = signatureOf(summary);
     const previousWaiting = waitingBaseline;
     board.summary = summary;
-    waitingBaseline = summary.counts.PAID ?? 0;
-    if (next !== signature) {
+    if (next !== signature || failedColumns.size > 0) {
+      if (!(await loadColumns())) {
+        board.failures += 1;
+        return;
+      }
       signature = next;
-      await Promise.all(BOARD_STATUSES.map((status) => loadColumn(status)));
     }
+    waitingBaseline = summary.counts.PAID ?? 0;
     const incoming = waitingBaseline - previousWaiting;
     if (incoming > 0) {
       onArrival(incoming);

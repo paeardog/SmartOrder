@@ -41,7 +41,7 @@
       :aria-label="favorited ? '取消收藏' : '收藏'"
       @click="toggleFav"
     >
-      <van-icon :name="favorited ? 'heart' : 'heart-o'" />
+      <HeartIcon :filled="favorited" />
     </button>
     <span v-if="badgeCount > 0" class="mcard__badge so-num">{{ badgeCount }}</span>
   </router-link>
@@ -52,6 +52,7 @@ import { computed } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import { businessOf, type MerchantSummary } from "@smartorder/api-client";
 import ArtImage from "./ArtImage.vue";
+import HeartIcon from "./HeartIcon.vue";
 import StatusTag from "./StatusTag.vue";
 import { hhmm, soldText, yuanText } from "../utils/format";
 import { useFavoritesStore } from "../stores/favorites";

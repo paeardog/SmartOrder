@@ -47,11 +47,11 @@ INSERT INTO `u_pickup_point` (`id`, `name`, `campus_area`, `building`, `floor_te
 (2, '第二食堂', '中心校区', '第二食堂', '二层楼梯口第三窗口', 116.4012300, 39.9123400, '10:30:00', '19:30:00', 90, 1),
 (3, '商业街饮品区', '南校区', '学生活动中心', '一层大厅西側', 116.4100200, 39.9001100, '09:00:00', '22:00:00', 80, 1);
 
-INSERT INTO `m_merchant` (`id`, `pickup_point_id`, `name`, `category_code`, `logo_url`, `description`, `contact_name`, `contact_phone`, `license_no`, `min_order_amount`, `pack_fee`, `avg_prepare_minutes`, `month_sold_base`, `rating_score`, `rating_count`, `sort_weight`, `status`) VALUES
-(1, 1, '川香盖浇饭', 'RICE', '/static/merchant/1/logo.png', '现炒盖饭,米饭免费加', '王建国', '13900000002', 'JY31101080012345', 0, 100, 12, 4200, 478, 312, 100, 1),
-(2, 1, '兰州牛肉面', 'NOODLE', '/static/merchant/2/logo.png', '一清二白三红四绿五黄', '马小龙', '13900000003', 'JY31101080012346', 0, 100, 8, 3800, 465, 268, 90, 1),
-(3, 3, '悸动奶茶', 'DRINK', '/static/merchant/3/logo.png', '手作鲜果茶,支持预定', '林小雨', '13900000004', 'JY31101080012347', 800, 0, 5, 6100, 489, 521, 80, 1),
-(4, 2, '黄焖鸡米饭', 'RICE', '/static/merchant/4/logo.png', '待审核示例档口', '赵大勺', '13900000006', '', 0, 200, 15, 0, 500, 0, 0, 0);
+INSERT INTO `m_merchant` (`id`, `pickup_point_id`, `name`, `category_code`, `logo_url`, `banner_url`, `description`, `contact_name`, `contact_phone`, `license_no`, `min_order_amount`, `pack_fee`, `avg_prepare_minutes`, `month_sold_base`, `rating_score`, `rating_count`, `sort_weight`, `status`) VALUES
+(1, 1, '川香盖浇饭', 'RICE', '/api/v1/merchants/images/M01.jpg', '/api/v1/merchants/images/B01.jpg', '现炒盖饭,米饭免费加', '王建国', '13900000002', 'JY31101080012345', 0, 100, 12, 4200, 478, 312, 100, 1),
+(2, 1, '兰州牛肉面', 'NOODLE', '/api/v1/merchants/images/M02.jpg', '/api/v1/merchants/images/B02.jpg', '一清二白三红四绿五黄', '马小龙', '13900000003', 'JY31101080012346', 0, 100, 8, 3800, 465, 268, 90, 1),
+(3, 3, '悸动奶茶', 'DRINK', '/api/v1/merchants/images/M03.jpg', '/api/v1/merchants/images/B03.jpg', '手作鲜果茶,支持预定', '林小雨', '13900000004', 'JY31101080012347', 800, 0, 5, 6100, 489, 521, 80, 1),
+(4, 2, '黄焖鸡米饭', 'RICE', '/api/v1/merchants/images/M04.jpg', '/api/v1/merchants/images/B04.jpg', '待审核示例档口', '赵大勺', '13900000006', '', 0, 200, 15, 0, 500, 0, 0, 0);
 
 INSERT INTO `m_business_hours` (`merchant_id`, `day_of_week`, `open_time`, `close_time`, `accept_start`, `accept_end`, `is_closed`) VALUES
 (1, 1, '10:00:00', '19:30:00', '10:00:00', '18:45:00', 0),
@@ -89,17 +89,17 @@ INSERT INTO `m_menu_category` (`id`, `merchant_id`, `name`, `sort_weight`, `stat
 (7, 3, '奶茶', 90, 1);
 
 INSERT INTO `m_dish` (`id`, `merchant_id`, `category_id`, `name`, `subtitle`, `image_url`, `base_price`, `pack_fee`, `min_buy_count`, `max_buy_per_order`, `stock_mode`, `month_sold`, `tags`, `is_recommend`, `sort_weight`, `status`) VALUES
-(1, 1, 1, '鱼香肉丝盖饭', '酸甜下饭,现炒', '/static/dish/1.jpg', 1500, 100, 1, 20, 1, 860, '招牌,微辣', 1, 100, 1),
-(2, 1, 1, '宫保鸡丁盖饭', '花生米现撒', '/static/dish/2.jpg', 1600, 100, 1, 20, 1, 742, '招牌', 1, 95, 1),
-(3, 1, 1, '回锅肉盖饭', '肥而不腻', '/static/dish/3.jpg', 1800, 100, 1, 15, 1, 511, '偏油', 0, 90, 1),
-(4, 1, 2, '干锅有机花菜', '可加五花肉', '/static/dish/4.jpg', 2000, 200, 1, 10, 1, 188, '素菜', 0, 80, 1),
-(5, 1, 3, '紫菜蛋花汤', '配饭解腻', '/static/dish/5.jpg', 300, 50, 1, 10, 0, 402, '汤', 0, 60, 1),
-(6, 2, 4, '牛肉面', '免费加面', '/static/dish/6.jpg', 1400, 100, 1, 10, 1, 1203, '招牌,汤面', 1, 100, 1),
-(7, 2, 4, '牛杂面', '限量供应', '/static/dish/7.jpg', 1600, 100, 1, 10, 1, 356, '限量', 0, 90, 2),
-(8, 2, 5, '卤蛋', '入味', '/static/dish/8.jpg', 200, 0, 1, 20, 0, 2201, '加购', 0, 50, 1),
-(9, 3, 6, '杨枝甘露', '手剥西柚', '/static/dish/9.jpg', 1600, 0, 1, 10, 1, 980, '招牌,冰', 1, 100, 1),
-(10, 3, 7, '珍珠奶茶', '鲜奶现调', '/static/dish/10.jpg', 1200, 0, 1, 10, 0, 1560, '经典', 1, 95, 1),
-(11, 3, 7, '茉莉奶绿', '茶味偏重', '/static/dish/11.jpg', 1300, 0, 1, 10, 0, 611, '清淡', 0, 90, 1);
+(1, 1, 1, '鱼香肉丝盖饭', '酸甜下饭,现炒', '/api/v1/dishes/images/D22.jpg', 1500, 100, 1, 20, 1, 860, '招牌,微辣', 1, 100, 1),
+(2, 1, 1, '宫保鸡丁盖饭', '花生米现撒', '/api/v1/dishes/images/D23.jpg', 1600, 100, 1, 20, 1, 742, '招牌', 1, 95, 1),
+(3, 1, 1, '回锅肉盖饭', '肥而不腻', '/api/v1/dishes/images/D31.jpg', 1800, 100, 1, 15, 1, 511, '偏油', 0, 90, 1),
+(4, 1, 2, '干锅有机花菜', '可加五花肉', '/api/v1/dishes/images/D24.jpg', 2000, 200, 1, 10, 1, 188, '素菜', 0, 80, 1),
+(5, 1, 3, '紫菜蛋花汤', '配饭解腻', '/api/v1/dishes/images/B01.jpg', 300, 50, 1, 10, 0, 402, '汤', 0, 60, 1),
+(6, 2, 4, '牛肉面', '免费加面', '/api/v1/dishes/images/D36.jpg', 1400, 100, 1, 10, 1, 1203, '招牌,汤面', 1, 100, 1),
+(7, 2, 4, '牛杂面', '限量供应', '/api/v1/dishes/images/B02.jpg', 1600, 100, 1, 10, 1, 356, '限量', 0, 90, 2),
+(8, 2, 5, '卤蛋', '入味', '/api/v1/dishes/images/D38.jpg', 200, 0, 1, 20, 0, 2201, '加购', 0, 50, 1),
+(9, 3, 6, '杨枝甘露', '手剥西柚', '/api/v1/dishes/images/D10.jpg', 1600, 0, 1, 10, 1, 980, '招牌,冰', 1, 100, 1),
+(10, 3, 7, '珍珠奶茶', '鲜奶现调', '/api/v1/dishes/images/D46.jpg', 1200, 0, 1, 10, 0, 1560, '经典', 1, 95, 1),
+(11, 3, 7, '茉莉奶绿', '茶味偏重', '/api/v1/dishes/images/D47.jpg', 1300, 0, 1, 10, 0, 611, '清淡', 0, 90, 1);
 
 INSERT INTO `m_dish_option_group` (`id`, `dish_id`, `name`, `group_type`, `required`, `min_select`, `max_select`, `sort_weight`) VALUES
 (1, 1, '辣度', 'SPEC', 1, 1, 1, 100),

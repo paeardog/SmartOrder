@@ -14,10 +14,14 @@
     "check:flyway": "node scripts/gen-flyway.mjs --check",
     "test:db": "node scripts/run-db-tests.mjs",
     "check:sample": "node scripts/import-ordering-sample.mjs --check",
-    "import:sample": "node scripts/import-ordering-sample.mjs",
+    "import:sample": "node scripts/import-ordering-sample.mjs && node scripts/ensure-merchant-accounts.mjs --apply",
+    "ensure:accounts": "node scripts/ensure-merchant-accounts.mjs --apply",
     "test:sample": "node --test scripts/import-ordering-sample.test.mjs",
     "test:sku": "node --experimental-strip-types --test scripts/sku.test.mjs",
     "test:platform": "node --test scripts/platform-console.test.mjs",
+    "test:all": "node scripts/test-all.mjs",
+    "test:quick": "node scripts/test-all.mjs --quick",
+    "test:ui": "node scripts/test-ui.mjs",
     "dev:h5": "pnpm --filter @smartorder/h5 dev",
     "dev:web": "pnpm --filter @smartorder/web dev",
     "dev:console": "pnpm --filter @smartorder/console dev",
@@ -26,6 +30,7 @@
   },
   "devDependencies": {
     "node-sql-parser": "^5.4.0",
+    "puppeteer-core": "^25.18.1",
     "typescript": "^5.9.3"
   }
 }

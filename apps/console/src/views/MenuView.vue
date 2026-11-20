@@ -8,6 +8,7 @@ import {
   formatYuan,
   yuanInputToCents,
 } from "@smartorder/shared";
+import ImagePreview from "../components/ImagePreview.vue";
 import UiModal from "../components/UiModal.vue";
 import { toastError, toastOk } from "../stores/toasts";
 
@@ -609,6 +610,7 @@ onMounted(() => void load());
         <label class="so-field">
           <span class="so-field__label">图片地址</span>
           <input v-model="dishDraft.imageUrl" class="so-input" type="text" placeholder="留空用默认图" />
+          <ImagePreview :src="dishDraft.imageUrl" alt="菜品图片预览" :height="72" />
         </label>
         <label class="so-field">
           <span class="so-field__label">状态</span>

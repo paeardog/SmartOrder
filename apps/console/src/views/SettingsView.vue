@@ -3,6 +3,7 @@ import { computed, onMounted, reactive, ref, watch } from "vue";
 import type { MerchantProfileUpdateRequest } from "@smartorder/api-client";
 import { businessOf } from "@smartorder/api-client";
 import { CATEGORY_LABELS, centsToYuanInput, formatYuan, yuanInputToCents } from "@smartorder/shared";
+import ImagePreview from "../components/ImagePreview.vue";
 import { consoleStore } from "../stores/session";
 import { loadProfile, saveProfile, shop, toggleOpen } from "../stores/shop";
 import { toastError, toastOk } from "../stores/toasts";
@@ -158,6 +159,7 @@ onMounted(() => {
           <label class="so-field">
             <span class="so-field__label">Logo 地址</span>
             <input v-model="form.logoUrl" class="so-input" type="text" />
+            <ImagePreview :src="form.logoUrl" alt="档口 Logo 预览" />
           </label>
           <div class="so-grid so-grid--2">
             <label class="so-field">

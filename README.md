@@ -87,3 +87,11 @@ npm run test:db
 它重建库、灌入种子数据，再逐个执行 `db/tests/*.sql`，断言每条语句的实际结果：唯一约束该拦的必须报错并带上指定错误码，状态机 CAS 的影响行数必须是 0 或 1，库存守卫在售罄时必须返回 0 行，热点查询的 `EXPLAIN` 必须命中预期索引。默认连 `127.0.0.1:3307`，用 `MYSQL_BIN`、`DB_HOST`、`DB_PORT`、`DB_USER`、`DB_PASS` 指向别的实例；`--verbose` 打印每个用例的完整输出，`--no-reset` 跳过重建直接对当前数据跑。
 
 静态校验证明的是语法与结构自洽，不证明 MySQL 的实际行为。这个区别不是理论上的：`pickup_code` 最初写成 `NOT NULL DEFAULT ''`，静态校验全绿，种子数据也插得进去，但在真实库里同档口同日下第二单直接报 1062。两层校验各抓住过对方抓不到的问题，详见 `docs/02` 最后一节。
+
+一键跑完全部校验和回归：
+
+```
+pnpm run test:all
+```
+
+它会串联静态校验、六组前端单测、独立测试库行为测试、后端 Maven 单测、全项目类型检查、三端构建、服务健康检查、三端浏览器页面自动化、数据库图片可用性，以及档口 1 与样本档口的真实下单/支付/商家接单 E2E。浏览器测试由 `pnpm run test:ui` 单独运行，使用本机 Chrome（可用 `CHROME_BIN` 指定），覆盖 H5 登录/收藏/菜单、Web 首页轮播/菜单、控制台登录/看板，并保存截图到 `.tools/ui-*.png`。数据库行为测试只重建 `smartorder_test`，不会动 `smartorder`；E2E 会在真实库留下测试订单。`pnpm run test:quick` 只跑静态校验、单测和类型检查；`--no-db`、`--no-server`、`--no-build`、`--no-ui`、`--no-e2e` 可按需跳过。骑手履约 E2E 需要单独的隔离后端，设置 `RIDER_TEST_BASE` 与 `RIDER_TEST_DB` 后才会执行。每次运行的结果写入 `.tools/test-report.json`。

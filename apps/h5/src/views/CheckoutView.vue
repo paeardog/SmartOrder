@@ -582,7 +582,9 @@ async function runPreflight(): Promise<void> {
 }
 
 function buildRemark(): string {
-  return dining.remarkWith(remark.value.trim(), address.picked ? fullAddressOf(address.picked) : "").slice(0, 200);
+  const dishNotes = notes.remarkFor(selectedItems.value);
+  const base = [dishNotes, remark.value.trim()].filter((line) => line !== "").join("；");
+  return dining.remarkWith(base, address.picked ? fullAddressOf(address.picked) : "").slice(0, 200);
 }
 
 async function submit(): Promise<void> {
@@ -596,7 +598,8 @@ async function submit(): Promise<void> {
   }
   lastSubmitAt = Date.now();
   submitting.value = true;
-  const ids = target.items.filter((item) => item.selected).map((item) => item.cartItemId);
+  const usedItems = [...selectedItems.value];
+  const ids = usedItems.map((item) => item.cartItemId);
   const name = (mode.value === "DELIVERY" ? (address.picked?.contactName ?? contactName.value) : contactName.value).trim();
   const phone = (mode.value === "DELIVERY" ? (address.picked?.contactPhone ?? contactPhone.value) : contactPhone.value).trim();
   try {
@@ -630,8 +633,8 @@ async function submit(): Promise<void> {
       pickupDeadlineAt: null,
       serverTime: result.serverTime,
     });
-    notes.clearFor(target.merchantId, target.items);
-    await cart.clear(target.merchantId);
+    notes.clearFor(undefined, usedItems);
+    void cart.refresh();
     couponStore.reset();
     couponManual.value = false;
     void router.replace({ name: "pay", params: { orderNo: result.orderNo } });

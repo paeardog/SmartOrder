@@ -145,7 +145,7 @@
 
           <EmptyState
             v-else
-            icon="search-o"
+            icon="search"
             :title="category === '' ? '暂无营业中的档口' : `「${category}」暂时没有营业档口`"
             description="看看别的分类，热乎美味不缺这一家"
             action-text="清空筛选"
@@ -211,6 +211,7 @@ import { useCampusStore } from "../stores/campus";
 import { useCartStore } from "../stores/cart";
 import { parseScanTarget, useDiningStore } from "../stores/dining";
 import { useOrderStore } from "../stores/orders";
+import { tokenStore } from "../stores/session";
 import { swr } from "../utils/cache";
 import { lastKeyword } from "../utils/search";
 import { toastText } from "../utils/report";
@@ -359,12 +360,19 @@ watch(
   },
 );
 
+function refreshPrivate(): void {
+  if (tokenStore.access === "") {
+    return;
+  }
+  void orders.refreshList();
+  void cart.refresh();
+}
+
 onMounted(() => {
   bindFromUrl();
   void loadAreas();
   void load();
-  void orders.refreshList();
-  void cart.refresh();
+  refreshPrivate();
   clock = window.setInterval(() => {
     heartbeat.value += 1;
   }, 1_000);
@@ -373,8 +381,7 @@ onMounted(() => {
 onActivated(() => {
   keyword.value = lastKeyword();
   bindFromUrl();
-  void orders.refreshList();
-  void cart.refresh();
+  refreshPrivate();
 });
 
 onBeforeUnmount(() => {

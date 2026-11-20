@@ -165,7 +165,7 @@
 
           <div v-if="sections.length === 0" class="menu-list-empty">
             <EmptyState
-              icon="search-o"
+              icon="search"
               :title="filter === '' ? '这个档口还没上架菜品' : `没找到和「${filter}」相关的菜`"
               :description="filter === '' ? '商家正在上新，稍后再来看看' : '换个关键词试试，或者看看别的分类'"
               :action-text="filter === '' ? '重新加载' : '清空搜索'"

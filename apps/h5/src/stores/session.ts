@@ -1,6 +1,7 @@
 import { reactive, readonly } from "vue";
 import { auth as authApi, type RiderProfile, type UserProfile } from "@smartorder/api-client";
 import { readJson, removeKey, STORAGE_KEYS, writeJson } from "@smartorder/shared";
+import { dropUserCache } from "../utils/cache";
 
 export type SessionRole = "student" | "rider";
 
@@ -55,6 +56,9 @@ export function setProfile(profile: UserProfile | null): void {
 }
 
 export function clearTokens(): void {
+  const userId = tokenStore.profile?.userId;
+  removeKey(`${STORAGE_KEYS.activeOrders}.${userId ?? "guest"}`);
+  dropUserCache(userId);
   tokenStore.access = "";
   tokenStore.refresh = "";
   tokenStore.profile = null;

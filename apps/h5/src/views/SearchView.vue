@@ -81,7 +81,7 @@
 
       <EmptyState
         v-else-if="groups.length === 0 && stores.length === 0"
-        icon="search-o"
+        icon="search"
         :title="`没找到和「${keyword}」相关的结果`"
         description="试试菜名、口味或拼音首字母，比如 hh 找汉堡"
         action-text="清空重搜"
