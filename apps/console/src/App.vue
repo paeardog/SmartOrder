@@ -86,6 +86,18 @@ const NAV_GROUPS: ReadonlyArray<{ title: string; items: NavItem[] }> = [
         icon: "M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2m22 0v-2a4 4 0 00-3-3.87M16 3.13a4 4 0 010 7.75M13 7a4 4 0 11-8 0 4 4 0 018 0z",
       },
       {
+        path: "/platform/orders", title: "订单管理", roles: PLATFORM,
+        icon: "M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5h6M9 12h6M9 16h4",
+      },
+      {
+        path: "/platform/refunds", title: "退款管理", roles: PLATFORM,
+        icon: "M3 10h18M5 6h14a2 2 0 012 2v10a2 2 0 01-2 2H5a2 2 0 01-2-2V8a2 2 0 012-2zM7 15h4",
+      },
+      {
+        path: "/platform/operation-logs", title: "操作日志", roles: PLATFORM,
+        icon: "M9 5h10v16H5V5h4M9 3h6v4H9zM9 12h6M9 16h6",
+      },
+      {
         path: "/platform/configs",
         title: "全局配置",
         roles: PLATFORM,

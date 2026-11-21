@@ -3,6 +3,7 @@ package com.campus.smartorder.console;
 import com.campus.smartorder.common.api.ApiResponse;
 import com.campus.smartorder.common.api.ErrorCode;
 import com.campus.smartorder.user.api.UserImportDto;
+import com.campus.smartorder.system.service.OperationLogService;
 import com.campus.smartorder.user.service.UserImportService;
 import jakarta.servlet.http.HttpServletRequest;
 import org.springframework.http.converter.HttpMessageNotReadableException;
@@ -18,9 +19,12 @@ import org.springframework.web.bind.annotation.RestController;
 public class PlatformUserImportController {
 
     private final UserImportService imports;
+    private final OperationLogService logs;
 
-    public PlatformUserImportController(UserImportService imports) {
+    public PlatformUserImportController(UserImportService imports,
+            OperationLogService logs) {
         this.imports = imports;
+        this.logs = logs;
     }
 
     @GetMapping("/template")
@@ -40,7 +44,7 @@ public class PlatformUserImportController {
     public ApiResponse<UserImportDto.Result> commit(HttpServletRequest request,
                                                    @RequestBody UserImportDto.FileRequest body) {
         requireAccess(request);
-        return ApiResponse.ok(imports.commit(body));
+        return ApiResponse.ok(logs.execute(request, "USER_IMPORT", "u_user", "", () -> imports.commit(body)));
     }
 
     @ExceptionHandler(HttpMessageNotReadableException.class)

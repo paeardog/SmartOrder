@@ -22,9 +22,13 @@ public class EventStreamController {
     private final JwtTokenProvider jwtTokenProvider;
     private final EventStreamService eventStreamService;
 
-    public EventStreamController(JwtTokenProvider jwtTokenProvider, EventStreamService eventStreamService) {
+    private final com.campus.smartorder.console.ConsoleAccountService accounts;
+
+    public EventStreamController(JwtTokenProvider jwtTokenProvider, EventStreamService eventStreamService,
+                                 com.campus.smartorder.console.ConsoleAccountService accounts) {
         this.jwtTokenProvider = jwtTokenProvider;
         this.eventStreamService = eventStreamService;
+        this.accounts = accounts;
     }
 
     @GetMapping(value = "/stream", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
@@ -48,10 +52,11 @@ public class EventStreamController {
             return rejected("登录凭证无效");
         }
 
-        if (JwtTokenProvider.SUBJECT_ACCOUNT.equals(jwtTokenProvider.getSubjectType(claims))) {
-            return eventStreamService.subscribeMerchant(longValue(claims.get("merchantId")));
-        }
         try {
+            if (JwtTokenProvider.SUBJECT_ACCOUNT.equals(jwtTokenProvider.getSubjectType(claims))) {
+                Long accountId = Long.parseLong(claims.getSubject());
+                return eventStreamService.subscribeAccount(() -> accounts.require(accountId));
+            }
             return eventStreamService.subscribeUser(Long.parseLong(claims.getSubject()));
         } catch (BizException ex) {
             return rejected(ex.getMessage());
@@ -69,17 +74,4 @@ public class EventStreamController {
         return emitter;
     }
 
-    private Long longValue(Object raw) {
-        if (raw instanceof Number value) {
-            return value.longValue();
-        }
-        if (raw == null) {
-            return null;
-        }
-        try {
-            return Long.valueOf(String.valueOf(raw));
-        } catch (NumberFormatException ex) {
-            return null;
-        }
-    }
 }

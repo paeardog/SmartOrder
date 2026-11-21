@@ -4,6 +4,7 @@ import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.campus.smartorder.common.api.BizException;
 import com.campus.smartorder.common.api.ErrorCode;
 import com.campus.smartorder.merchant.domain.Merchant;
+import com.campus.smartorder.merchant.api.MerchantConsoleDto;
 import com.campus.smartorder.merchant.mapper.MerchantMapper;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -29,6 +30,51 @@ public class PlatformMerchantService {
                 .isNull(Merchant::getDeletedAt)
                 .eq(status != null, Merchant::getStatus, status)
                 .orderByAsc(Merchant::getId));
+    }
+
+    @Transactional
+    public MerchantConsoleDto.Profile create(
+            MerchantConsoleDto.ProfileUpdateRequest body, String pickupPointId) {
+        Merchant merchant = profileService.profilePatch(body);
+        if (merchant.getName() == null || merchant.getCategoryCode() == null) {
+            throw new BizException(ErrorCode.INVALID_PARAM, "档口名称和品类不能为空");
+        }
+        merchant.setPickupPointId(profileService.requirePickupPoint(pickupPointId));
+        merchant.setLogoUrl(body.logoUrl() == null ? "" : body.logoUrl());
+        merchant.setBannerUrl("");
+        merchant.setDescription(body.description() == null ? "" : body.description());
+        merchant.setContactName(body.contactName() == null ? "" : body.contactName());
+        merchant.setContactPhone(body.contactPhone() == null ? "" : body.contactPhone());
+        merchant.setLicenseNo(body.licenseNo() == null ? "" : body.licenseNo());
+        merchant.setLicenseUrl("");
+        merchant.setSettleAccount(body.settleAccount() == null ? "" : body.settleAccount());
+        merchant.setMinOrderAmount(body.minOrderAmount() == null ? 0 : body.minOrderAmount());
+        merchant.setPackFee(body.packFee() == null ? 0 : body.packFee());
+        merchant.setAvgPrepareMinutes(body.avgPrepareMinutes() == null ? 10 : body.avgPrepareMinutes());
+        merchant.setMonthSoldBase(0);
+        merchant.setRatingScore(500);
+        merchant.setRatingCount(0);
+        merchant.setSortWeight(0);
+        merchant.setStatus(Merchant.STATUS_PENDING);
+        merchant.setRejectReason("");
+        merchantMapper.insert(merchant);
+        return profileService.profile(merchant.getId());
+    }
+
+    @Transactional
+    public MerchantConsoleDto.Profile patchProfile(Long merchantId,
+            MerchantConsoleDto.ProfileUpdateRequest body, String pickupPointId) {
+        profileService.require(merchantId);
+        Merchant patch = profileService.profilePatch(body);
+        if (pickupPointId != null) {
+            patch.setPickupPointId(profileService.requirePickupPoint(pickupPointId));
+        }
+        if (patch.equals(new Merchant())) {
+            return profileService.profile(merchantId);
+        }
+        patch.setId(merchantId);
+        merchantMapper.updateById(patch);
+        return profileService.profile(merchantId);
     }
 
     @Transactional

@@ -28,7 +28,7 @@ class PlatformUserAuthenticationTest {
 
     private final UserMapper users = mock(UserMapper.class);
     private final OrderMapper orders = mock(OrderMapper.class);
-    private final PlatformUserService service = new PlatformUserService(users, orders);
+    private final PlatformUserService service = new PlatformUserService(users, orders, mock(PasswordHasher.class));
     private final ObjectMapper json = new ObjectMapper();
     private JwtTokenProvider tokens;
     private JwtAuthenticationFilter filter;
@@ -39,7 +39,13 @@ class PlatformUserAuthenticationTest {
                 new SmartOrderProperties.Security(Duration.ofHours(1), Duration.ofDays(7),
                         "platform-user-authentication-test-signing-key", "test", ""), null);
         tokens = new JwtTokenProvider(properties);
-        filter = new JwtAuthenticationFilter(tokens, json, service);
+        var accounts = mock(com.campus.smartorder.console.ConsoleAccountService.class);
+        var admin = new com.campus.smartorder.auth.domain.SysAccount();
+        admin.setId(10L);
+        admin.setRoleCode("PLATFORM_ADMIN");
+        admin.setStatus(1);
+        when(accounts.require(10L)).thenReturn(admin);
+        filter = new JwtAuthenticationFilter(tokens, json, service, accounts);
     }
 
     @Test
@@ -125,6 +131,45 @@ class PlatformUserAuthenticationTest {
         BizException error = assertThrows(BizException.class, () -> ConsoleAccess.enforce(
                 "/api/v1/platform/users", "USER", "PLATFORM_ADMIN", method));
         assertEquals(ErrorCode.FORBIDDEN, error.errorCode());
+    }
+
+    @Test
+    void oldAccountTokenUsesCurrentRoleAndMerchantAndRejectsDisabledAccount() throws Exception {
+        var mapper = mock(com.campus.smartorder.auth.mapper.SysAccountMapper.class);
+        var account = new com.campus.smartorder.auth.domain.SysAccount();
+        account.setId(10L);
+        account.setStatus(1);
+        account.setRoleCode("MERCHANT_OWNER");
+        account.setMerchantId(20L);
+        when(mapper.selectById(10L)).thenReturn(account);
+        var console = new com.campus.smartorder.console.ConsoleAccountService(mapper,
+                mock(com.campus.smartorder.merchant.mapper.MerchantMapper.class), mock(PasswordHasher.class), tokens,
+                new SmartOrderProperties("Asia/Shanghai", null, null, null, null));
+        var checked = new JwtAuthenticationFilter(tokens, json, service, console);
+        String old = tokens.createAccountAccessToken(10L, "MERCHANT_OWNER", 20L);
+        account.setRoleCode("MERCHANT_STAFF");
+        account.setMerchantId(30L);
+        var denied = request(old);
+        denied.setMethod("PATCH");
+        denied.setRequestURI("/api/v1/merchant/profile");
+        var response = new MockHttpServletResponse();
+        var chain = mock(FilterChain.class);
+        checked.doFilter(denied, response, chain);
+        assertEquals(403, response.getStatus());
+        verifyNoInteractions(chain);
+        var allowed = request(old);
+        allowed.setRequestURI("/api/v1/merchant/orders");
+        var allowedResponse = new MockHttpServletResponse();
+        checked.doFilter(allowed, allowedResponse, chain);
+        verify(chain).doFilter(allowed, allowedResponse);
+        assertEquals("MERCHANT_STAFF", allowed.getAttribute(ConsoleAccess.ROLE_CODE));
+        assertEquals(30L, allowed.getAttribute(ConsoleAccess.MERCHANT_ID));
+        account.setStatus(0);
+        var disabledResponse = new MockHttpServletResponse();
+        var disabledChain = mock(FilterChain.class);
+        checked.doFilter(request(old), disabledResponse, disabledChain);
+        assertEquals(403, disabledResponse.getStatus());
+        verifyNoInteractions(disabledChain);
     }
 
     private MockHttpServletRequest request(String token) {

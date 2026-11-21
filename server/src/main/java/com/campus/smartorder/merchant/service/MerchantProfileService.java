@@ -139,13 +139,72 @@ public class MerchantProfileService {
             throw new BizException(ErrorCode.INVALID_PARAM, "要改的内容是空的");
         }
         Merchant merchant = require(merchantId);
-        Merchant patch = new Merchant();
+        Merchant patch = profilePatch(body);
+        if (patch.equals(new Merchant())) {
+            return profile(merchantId);
+        }
         patch.setId(merchant.getId());
+        merchantMapper.updateById(patch);
+        return profile(merchantId);
+    }
+
+    public List<MerchantConsoleDto.CategoryOption> categoryOptions() {
+        Map<String, String> labels = new LinkedHashMap<>();
+        labels.put("RICE", "盖饭");
+        labels.put("NOODLE", "面食");
+        labels.put("DRINK", "饮品");
+        labels.put("SNACK", "小吃");
+        labels.put("FRUIT", "水果");
+        labels.put("OTHER", "其他");
+        SysConfig config = configMapper.selectByKey(CATEGORY_LABEL_KEY);
+        if (config != null && config.getConfigValue() != null) {
+            for (String pair : config.getConfigValue().split(",")) {
+                String[] parts = pair.split(":", 2);
+                if (parts.length == 2 && !parts[0].isBlank() && !parts[1].isBlank()) {
+                    labels.put(parts[0].trim(), parts[1].trim());
+                }
+            }
+        }
+        return labels.entrySet().stream()
+                .map(entry -> new MerchantConsoleDto.CategoryOption(entry.getKey(), entry.getValue())).toList();
+    }
+
+    public Long requirePickupPoint(String raw) {
+        Long id = Ids.parse(raw);
+        if (id == null || id <= 0) {
+            throw new BizException(ErrorCode.INVALID_PARAM, "请选择启用的自提点");
+        }
+        PickupPoint point = pickupPointMapper.selectById(id);
+        if (point == null || !point.open()) {
+            throw new BizException(ErrorCode.INVALID_PARAM, "请选择启用的自提点");
+        }
+        return id;
+    }
+
+    public Merchant profilePatch(MerchantConsoleDto.ProfileUpdateRequest body) {
+        if (body == null) {
+            throw new BizException(ErrorCode.INVALID_PARAM, "档口资料不能为空");
+        }
+        validateText(body.name(), 64, "档口名称", true);
+        validateText(body.description(), 500, "简介", false);
+        validateText(body.logoUrl(), 512, "Logo 地址", false);
+        validateText(body.contactName(), 32, "联系人", false);
+        validateText(body.licenseNo(), 64, "证照编号", false);
+        validateText(body.settleAccount(), 64, "结算标识", false);
+        if (body.contactPhone() != null && !body.contactPhone().isEmpty()
+                && !body.contactPhone().matches("1[3-9][0-9]{9}")) {
+            throw new BizException(ErrorCode.INVALID_PARAM, "请输入合法手机号");
+        }
+        if (body.categoryCode() != null && categoryOptions().stream().noneMatch(option ->
+                option.code().equals(body.categoryCode().trim().toUpperCase(java.util.Locale.ROOT)))) {
+            throw new BizException(ErrorCode.INVALID_PARAM, "请选择合法品类");
+        }
+        Merchant patch = new Merchant();
         if (body.name() != null && !body.name().isBlank()) {
             patch.setName(body.name().trim());
         }
         if (body.categoryCode() != null && !body.categoryCode().isBlank()) {
-            patch.setCategoryCode(body.categoryCode().trim().toUpperCase());
+            patch.setCategoryCode(body.categoryCode().trim().toUpperCase(java.util.Locale.ROOT));
         }
         if (body.description() != null) {
             patch.setDescription(body.description());
@@ -174,8 +233,13 @@ public class MerchantProfileService {
         if (body.avgPrepareMinutes() != null) {
             patch.setAvgPrepareMinutes(requireRange(body.avgPrepareMinutes(), 1, 180, "出餐时长"));
         }
-        merchantMapper.updateById(patch);
-        return profile(merchantId);
+        return patch;
+    }
+
+    private void validateText(String value, int max, String label, boolean nonBlank) {
+        if (value != null && ((nonBlank && value.isBlank()) || value.codePointCount(0, value.length()) > max)) {
+            throw new BizException(ErrorCode.INVALID_PARAM, label + "不能为空或超过 " + max + " 字符");
+        }
     }
 
     @Transactional

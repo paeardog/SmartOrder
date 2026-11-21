@@ -227,6 +227,20 @@ public class AuthService {
         return profile(user);
     }
 
+    @Transactional
+    public void resetPassword(Long userId, String newPassword) {
+        if (newPassword == null || newPassword.isBlank() || newPassword.length() < 6 || newPassword.length() > 64) {
+            throw new BizException(ErrorCode.INVALID_PARAM);
+        }
+        if (userMapper.selectById(userId) == null) {
+            throw new BizException(ErrorCode.RESOURCE_NOT_FOUND);
+        }
+        userMapper.update(null, new LambdaUpdateWrapper<User>()
+                .eq(User::getId, userId)
+                .set(User::getPasswordHash, passwordHasher.encode(newPassword)));
+        authTokenMapper.delete(new LambdaQueryWrapper<AuthToken>().eq(AuthToken::getUserId, userId));
+    }
+
     public User requireUser(Long userId) {
         User user = userMapper.selectById(userId);
         if (user == null) {

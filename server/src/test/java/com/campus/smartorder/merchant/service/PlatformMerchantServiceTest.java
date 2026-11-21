@@ -7,6 +7,8 @@ import com.campus.smartorder.common.api.BizException;
 import com.campus.smartorder.common.api.ErrorCode;
 import com.campus.smartorder.common.config.SmartOrderProperties;
 import com.campus.smartorder.merchant.domain.Merchant;
+import com.campus.smartorder.merchant.api.MerchantConsoleDto;
+import com.campus.smartorder.user.domain.PickupPoint;
 import com.campus.smartorder.merchant.mapper.BusinessHoursMapper;
 import com.campus.smartorder.merchant.mapper.DateOverrideMapper;
 import com.campus.smartorder.merchant.mapper.MerchantMapper;
@@ -52,6 +54,119 @@ class PlatformMerchantServiceTest {
         merchant.setStatus(0);
         merchant.setRejectReason("原审核原因");
         when(merchants.selectById(10L)).thenReturn(merchant);
+    }
+
+    private MerchantConsoleDto.ProfileUpdateRequest profileBody(String name, String category, String phone,
+                                                               Integer amount, Integer minutes) {
+        return new MerchantConsoleDto.ProfileUpdateRequest(name, category, null, null, null, phone,
+                null, null, amount, null, minutes);
+    }
+
+    private void availablePoint() {
+        PickupPoint point = new PickupPoint();
+        point.setId(2L);
+        point.setStatus(1);
+        when(points.selectById(2L)).thenReturn(point);
+        when(openState.statesOf(anyList(), any())).thenReturn(java.util.Map.of());
+    }
+
+    @Test
+    void createsPendingWithDefaultsWithoutOpeningOrCreatingRelatedRecords() {
+        availablePoint();
+        when(merchants.insert(any(Merchant.class))).thenAnswer(call -> {
+            merchant = call.getArgument(0);
+            merchant.setId(10L);
+            when(merchants.selectById(10L)).thenReturn(merchant);
+            return 1;
+        });
+        var result = service.create(profileBody(" 新档口 ", "rice", "13800138000", null, null), "2");
+        assertEquals("新档口", result.name());
+        assertEquals("RICE", result.categoryCode());
+        assertEquals(0, result.status());
+        assertFalse(result.open());
+        assertEquals(0, result.monthSold());
+        assertEquals(500, result.ratingScore());
+        assertEquals(0, result.ratingCount());
+        assertEquals(0, result.minOrderAmount());
+        assertEquals(0, result.packFee());
+        assertEquals(10, result.avgPrepareMinutes());
+        assertEquals("", merchant.getBannerUrl());
+        assertEquals("", merchant.getLicenseUrl());
+        assertEquals(0, merchant.getSortWeight());
+        verifyNoInteractions(hours, overrides);
+        verify(merchants, never()).casStatus(anyLong(), anyInt(), anyInt(), any());
+    }
+
+    @ParameterizedTest
+    @CsvSource({"'',RICE,13800138000,0,10", "档口,INVALID,13800138000,0,10",
+            "档口,RICE,123,0,10", "档口,RICE,13800138000,-1,10", "档口,RICE,13800138000,0,181"})
+    void rejectsInvalidProfileBeforeInsert(String name, String category, String phone, int amount, int minutes) {
+        assertInvalid(() -> service.create(profileBody(name, category, phone, amount, minutes), "2"));
+        verify(merchants, never()).insert(any(Merchant.class));
+    }
+
+    @Test
+    void refusesMissingOrDisabledPickupPoint() {
+        var body = profileBody("档口", "RICE", null, null, null);
+        assertInvalid(() -> service.create(body, "2"));
+        PickupPoint point = new PickupPoint();
+        point.setStatus(0);
+        when(points.selectById(2L)).thenReturn(point);
+        assertInvalid(() -> service.create(body, "2"));
+        verify(merchants, never()).insert(any(Merchant.class));
+    }
+
+    @ParameterizedTest
+    @ValueSource(ints = {0, 1, 2, 3, 4})
+    void editingDoesNotWriteStateOrDerivedFields(int status) {
+        availablePoint();
+        merchant.setStatus(status);
+        service.patchProfile(10L, profileBody("新名称", null, null, null, null), "2");
+        var captor = org.mockito.ArgumentCaptor.forClass(Merchant.class);
+        verify(merchants).updateById(captor.capture());
+        Merchant patch = captor.getValue();
+        assertEquals("新名称", patch.getName());
+        assertEquals(2L, patch.getPickupPointId());
+        assertNull(patch.getStatus());
+        assertNull(patch.getRejectReason());
+        assertNull(patch.getRatingScore());
+        assertNull(patch.getMonthSoldBase());
+        assertNull(patch.getRatingCount());
+        assertEquals(status, merchant.getStatus());
+        verify(merchants, never()).casStatus(anyLong(), anyInt(), anyInt(), any());
+    }
+
+    @Test
+    void acceptsConfiguredCategoriesAndRejectsMissingCreationFields() {
+        var config = new com.campus.smartorder.system.domain.SysConfig();
+        config.setConfigValue("BAKERY:烘焙");
+        when(configs.selectByKey("CATEGORY_LABELS")).thenReturn(config);
+        assertEquals("BAKERY", profiles.profilePatch(profileBody("面包", "bakery", null, null, null)).getCategoryCode());
+        assertTrue(profiles.categoryOptions().stream().anyMatch(option -> option.code().equals("BAKERY")));
+        assertInvalid(() -> service.create(profileBody(null, "RICE", null, null, null), "2"));
+        assertInvalid(() -> service.create(profileBody("名称", null, null, null, null), "2"));
+        assertInvalid(() -> service.create(null, "2"));
+        assertInvalid(() -> service.create(profileBody("字".repeat(65), "RICE", null, null, null), "2"));
+        verify(merchants, never()).insert(any(Merchant.class));
+    }
+
+    @Test
+    void emptyPatchDoesNotIssueEmptySqlAndPickupOnlyPatchIsSupported() {
+        availablePoint();
+        var empty = profileBody(null, null, null, null, null);
+        service.patchProfile(10L, empty, null);
+        verify(merchants, never()).updateById(any(Merchant.class));
+        service.patchProfile(10L, empty, "2");
+        verify(merchants).updateById(argThat((Merchant patch) -> patch.getPickupPointId().equals(2L)
+                && patch.getStatus() == null && patch.getName() == null));
+    }
+
+    @Test
+    void cannotEditDeletedMerchant() {
+        merchant.setDeletedAt(LocalDateTime.now());
+        assertThrows(BizException.class, () -> service.patchProfile(10L,
+                profileBody("名称", null, null, null, null), null));
+        verify(merchants, never()).updateById(any(Merchant.class));
     }
 
     @ParameterizedTest

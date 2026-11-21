@@ -23,6 +23,7 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
     private final JwtTokenProvider jwtTokenProvider;
     private final ObjectMapper objectMapper;
     private final PlatformUserService platformUserService;
+    private final com.campus.smartorder.console.ConsoleAccountService consoleAccounts;
 
     private static final List<String> WHITE_LIST = List.of(
             "/api/v1/auth/password/login",
@@ -42,10 +43,12 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
     );
 
     public JwtAuthenticationFilter(JwtTokenProvider jwtTokenProvider, ObjectMapper objectMapper,
-                                   PlatformUserService platformUserService) {
+                                   PlatformUserService platformUserService,
+                                   com.campus.smartorder.console.ConsoleAccountService consoleAccounts) {
         this.jwtTokenProvider = jwtTokenProvider;
         this.objectMapper = objectMapper;
         this.platformUserService = platformUserService;
+        this.consoleAccounts = consoleAccounts;
     }
 
     @Override
@@ -79,10 +82,12 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
             String roleCode = claims.get("roleCode", String.class);
 
             if (JwtTokenProvider.SUBJECT_ACCOUNT.equals(subjectType)) {
+                var account = consoleAccounts.require(subjectId);
+                roleCode = account.getRoleCode();
                 request.setAttribute(ConsoleAccess.ACCOUNT_ID, subjectId);
                 request.setAttribute(ConsoleAccess.ROLE_CODE, roleCode == null ? "" : roleCode);
                 request.setAttribute(ConsoleAccess.SUBJECT_TYPE, subjectType);
-                Long merchantId = longClaim(claims, "merchantId");
+                Long merchantId = account.getMerchantId();
                 if (merchantId != null) {
                     request.setAttribute(ConsoleAccess.MERCHANT_ID, merchantId);
                 }
@@ -98,21 +103,6 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
             writeError(response, ex.errorCode());
         } catch (Exception e) {
             writeError(response, ErrorCode.TOKEN_INVALID);
-        }
-    }
-
-    private Long longClaim(Claims claims, String name) {
-        Object raw = claims.get(name);
-        if (raw == null) {
-            return null;
-        }
-        if (raw instanceof Number number) {
-            return number.longValue();
-        }
-        try {
-            return Long.valueOf(String.valueOf(raw));
-        } catch (NumberFormatException ex) {
-            return null;
         }
     }
 

@@ -78,6 +78,24 @@ const routes: RouteRecordRaw[] = [
     meta: { title: "用户管理", roles: PLATFORM },
   },
   {
+    path: "/platform/orders",
+    name: "platform-orders",
+    component: () => import("./views/PlatformOrdersView.vue"),
+    meta: { title: "订单管理", roles: PLATFORM },
+  },
+  {
+    path: "/platform/refunds",
+    name: "platform-refunds",
+    component: () => import("./views/PlatformRefundsView.vue"),
+    meta: { title: "退款管理", roles: PLATFORM },
+  },
+  {
+    path: "/platform/operation-logs",
+    name: "platform-operation-logs",
+    component: () => import("./views/PlatformLogsView.vue"),
+    meta: { title: "操作日志", roles: PLATFORM },
+  },
+  {
     path: "/platform/configs",
     name: "platform-configs",
     component: () => import("./views/PlatformConfigsView.vue"),

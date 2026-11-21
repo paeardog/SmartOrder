@@ -86,11 +86,37 @@ class EventStreamServiceTest {
         JwtTokenProvider tokens = new JwtTokenProvider(properties);
         String access = tokens.createAccessToken(1L);
         ban(1L);
-        EventStreamController controller = new EventStreamController(tokens, service);
+        EventStreamController controller = new EventStreamController(tokens, service, mock(com.campus.smartorder.console.ConsoleAccountService.class));
         SseEmitter emitter = controller.stream(access, new MockHttpServletRequest());
         assertEquals(0, service.listenerCount());
         assertEquals(true, ReflectionTestUtils.getField(emitter, "complete"));
         verify(users).requireUsable(1L);
+    }
+
+    @Test
+    void accountStreamRevalidatesStatusAndScopeBeforeEveryEvent() {
+        var current = new java.util.concurrent.atomic.AtomicReference<com.campus.smartorder.auth.domain.SysAccount>();
+        var owner = new com.campus.smartorder.auth.domain.SysAccount();
+        owner.setStatus(1);
+        owner.setRoleCode("MERCHANT_OWNER");
+        owner.setMerchantId(10L);
+        current.set(owner);
+        SseEmitter emitter = service.subscribeAccount(current::get);
+        int before = pendingEvents(emitter);
+        var moved = new com.campus.smartorder.auth.domain.SysAccount();
+        moved.setStatus(1);
+        moved.setRoleCode("MERCHANT_STAFF");
+        moved.setMerchantId(20L);
+        current.set(moved);
+        service.publishMerchantOrder(10L, "order-1", "READY");
+        assertEquals(before, pendingEvents(emitter));
+        assertEquals(0, service.listenerCount());
+        SseEmitter second = service.subscribeAccount(current::get);
+        before = pendingEvents(second);
+        moved.setStatus(0);
+        service.heartbeat();
+        assertEquals(before, pendingEvents(second));
+        assertEquals(0, service.listenerCount());
     }
 
     private void ban(Long userId) {

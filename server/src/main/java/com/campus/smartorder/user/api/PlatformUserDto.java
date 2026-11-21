@@ -61,6 +61,12 @@ public final class PlatformUserDto {
                                 @Size(max = 255) String reason) {
     }
 
+    public record CreateRequest(@jakarta.validation.constraints.NotBlank
+                                @jakarta.validation.constraints.Pattern(regexp = "[0-9]{8,12}") String studentNo,
+                                @jakarta.validation.constraints.NotBlank @Size(min = 6, max = 64) String password,
+                                @jakarta.validation.constraints.NotBlank @Size(max = 32) String realName,
+                                @NotNull @jakarta.validation.constraints.Pattern(regexp = "|1[3-9][0-9]{9}") String phone) {}
+
     public record ProfileUpdateRequest(@Size(max = 64) String nickname,
                                        @Size(max = 32) String realName,
                                        @Size(max = 32) String studentNo,

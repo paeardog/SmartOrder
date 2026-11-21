@@ -1,5 +1,7 @@
 package com.campus.smartorder.console;
 
+import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
+import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
 import com.campus.smartorder.auth.domain.SysAccount;
 import com.campus.smartorder.auth.mapper.SysAccountMapper;
 import com.campus.smartorder.auth.service.JwtTokenProvider;
@@ -15,6 +17,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDateTime;
+import java.util.List;
 import java.util.Map;
 
 @Service
@@ -93,6 +96,34 @@ public class ConsoleAccountService {
             throw new BizException(ErrorCode.ACCOUNT_DISABLED);
         }
         return account;
+    }
+
+    public List<ConsoleDto.AccountInfo> merchantAccounts() {
+        return accountMapper.selectList(new LambdaQueryWrapper<SysAccount>()
+                        .in(SysAccount::getRoleCode, SysAccount.ROLE_MERCHANT_OWNER, SysAccount.ROLE_MERCHANT_STAFF)
+                        .isNotNull(SysAccount::getMerchantId)
+                        .orderByAsc(SysAccount::getId))
+                .stream().map(this::info).toList();
+    }
+
+    @Transactional
+    public void resetMerchantPassword(Long accountId, String newPassword) {
+        if (newPassword == null || newPassword.isBlank() || newPassword.length() < 6 || newPassword.length() > 64) {
+            throw new BizException(ErrorCode.INVALID_PARAM);
+        }
+        SysAccount account = accountMapper.selectById(accountId);
+        if (account == null) {
+            throw new BizException(ErrorCode.RESOURCE_NOT_FOUND);
+        }
+        if (!account.merchantSide() || account.getMerchantId() == null) {
+            throw new BizException(ErrorCode.FORBIDDEN);
+        }
+        accountMapper.update(null, new LambdaUpdateWrapper<SysAccount>()
+                .eq(SysAccount::getId, accountId)
+                .in(SysAccount::getRoleCode, SysAccount.ROLE_MERCHANT_OWNER, SysAccount.ROLE_MERCHANT_STAFF)
+                .isNotNull(SysAccount::getMerchantId)
+                .set(SysAccount::getPasswordHash, passwordHasher.encode(newPassword))
+                .set(SysAccount::getPasswordUpdatedAt, LocalDateTime.now(properties.zone())));
     }
 
     public ConsoleDto.AccountInfo info(SysAccount account) {

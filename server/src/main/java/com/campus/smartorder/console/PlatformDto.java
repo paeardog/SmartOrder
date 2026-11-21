@@ -60,6 +60,9 @@ public final class PlatformDto {
     public record RejectRequest(String reason) {
     }
 
+    public record MerchantProfileRequest(MerchantConsoleDto.ProfileUpdateRequest profile, String pickupPointId) {
+    }
+
     public record MerchantStatusRequest(Integer status, Integer expectedStatus) {
     }
 

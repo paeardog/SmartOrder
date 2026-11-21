@@ -126,6 +126,9 @@ public final class MerchantConsoleDto {
             LocalDateTime serverTime) {
     }
 
+    public record CategoryOption(String code, String name) {
+    }
+
     public record ProfileUpdateRequest(
             String name,
             String categoryCode,

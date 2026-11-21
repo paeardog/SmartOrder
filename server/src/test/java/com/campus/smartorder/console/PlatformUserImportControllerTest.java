@@ -34,7 +34,10 @@ class PlatformUserImportControllerTest {
     @BeforeEach
     void setUp() {
         service = mock(UserImportService.class);
-        mvc = MockMvcBuilders.standaloneSetup(new PlatformUserImportController(service))
+        mvc = MockMvcBuilders.standaloneSetup(new PlatformUserImportController(service,
+                        new com.campus.smartorder.system.service.OperationLogService(
+                                mock(com.campus.smartorder.system.mapper.OperationLogMapper.class),
+                                new com.fasterxml.jackson.databind.ObjectMapper())))
                 .setControllerAdvice(new GlobalExceptionHandler()).build();
     }
 
@@ -126,6 +129,7 @@ class PlatformUserImportControllerTest {
 
     private MockHttpServletRequestBuilder admin(MockHttpServletRequestBuilder request) {
         return request.requestAttr(ConsoleAccess.SUBJECT_TYPE, "ACCOUNT")
-                .requestAttr(ConsoleAccess.ROLE_CODE, "PLATFORM_ADMIN");
+                .requestAttr(ConsoleAccess.ROLE_CODE, "PLATFORM_ADMIN")
+                .requestAttr(ConsoleAccess.ACCOUNT_ID, 1L);
     }
 }

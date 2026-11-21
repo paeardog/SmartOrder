@@ -61,6 +61,19 @@ const categories = computed(() => {
 
 const activeOrders = computed(() => orders.active);
 
+watch(
+  () => activeOrders.value.map((order) => order.orderNo),
+  (orderNos) => {
+    if (tokenStore.access === "") return;
+    for (const orderNo of orderNos) {
+      if (orders.detailOf(orderNo) === null) {
+        void orders.refreshDetail(orderNo);
+      }
+    }
+  },
+  { immediate: true },
+);
+
 async function load(): Promise<void> {
   const current = ++loadSequence;
   loading.value = true;
@@ -161,7 +174,11 @@ onMounted(() => {
             <StatusTag :status="order.status" dot />
           </div>
           <div class="so-order-card__body">
-            <span class="so-order-card__thumb"><AppIcon name="bag" :size="20" /></span>
+            <SoImage
+              :src="orders.detailOf(order.orderNo)?.items.find((item) => item.dishImage)?.dishImage"
+              :alt="order.merchantName + ' 商品'"
+              img-class="so-order-card__thumb"
+            />
             <div class="so-grow so-stack--sm">
               <span class="so-hint">
                 {{ order.itemCount }} 件 · 实付 {{ formatYuan(order.payAmount) }}

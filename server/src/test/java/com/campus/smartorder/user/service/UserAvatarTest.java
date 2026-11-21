@@ -97,7 +97,7 @@ class UserAvatarTest {
         });
         mvc = MockMvcBuilders.standaloneSetup(new UserAvatarController(auth, avatars))
                 .setControllerAdvice(new GlobalExceptionHandler())
-                .addFilters(new JwtAuthenticationFilter(tokens, new ObjectMapper(), mock(PlatformUserService.class)))
+                .addFilters(new JwtAuthenticationFilter(tokens, new ObjectMapper(), mock(PlatformUserService.class), mock(com.campus.smartorder.console.ConsoleAccountService.class, org.mockito.Answers.RETURNS_DEEP_STUBS)))
                 .build();
     }
 

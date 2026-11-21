@@ -27,9 +27,41 @@ public class PlatformUserService {
     private final UserMapper userMapper;
     private final OrderMapper orderMapper;
 
-    public PlatformUserService(UserMapper userMapper, OrderMapper orderMapper) {
+    private final com.campus.smartorder.auth.service.PasswordHasher passwords;
+
+    public PlatformUserService(UserMapper userMapper, OrderMapper orderMapper,
+                               com.campus.smartorder.auth.service.PasswordHasher passwords) {
         this.userMapper = userMapper;
         this.orderMapper = orderMapper;
+        this.passwords = passwords;
+    }
+
+    @Transactional
+    public PlatformUserDto.UserRow create(PlatformUserDto.CreateRequest body) {
+        if (body == null || body.studentNo() == null || !body.studentNo().matches("[0-9]{8,12}"))
+            throw new BizException(ErrorCode.STUDENT_NO_INVALID);
+        if (body.password() == null || body.password().isBlank() || body.password().length() < 6 || body.password().length() > 64)
+            throw new BizException(ErrorCode.INVALID_PARAM, "密码须为6至64位且不能全部为空白");
+        if (body.realName() == null || body.realName().isBlank() || body.realName().length() > 32)
+            throw new BizException(ErrorCode.INVALID_PARAM, "姓名不能为空且不能超过32字");
+        if (body.phone() == null || (!body.phone().isEmpty() && !PHONE.matcher(body.phone()).matches()))
+            throw new BizException(ErrorCode.INVALID_PARAM, "手机号格式不正确");
+        User user = new User();
+        user.setStudentNo(body.studentNo());
+        user.setRealName(body.realName().trim());
+        user.setNickname(body.realName().trim());
+        user.setPhone(body.phone().isEmpty() ? null : body.phone());
+        user.setPasswordHash(passwords.encode(body.password()));
+        user.setAuthSource(3);
+        user.setVerifyStatus(User.VERIFY_PENDING);
+        user.setCreditScore(100);
+        user.setOrderCount(0L);
+        user.setStatus(User.STATUS_NORMAL);
+        user.setCreatedAt(LocalDateTime.now());
+        user.setUpdatedAt(LocalDateTime.now());
+        try { userMapper.insert(user); }
+        catch (DuplicateKeyException ex) { throw duplicateKey(ex); }
+        return toRow(user);
     }
 
     public PlatformUserDto.PageResponse<PlatformUserDto.UserRow> list(int page, int pageSize, String keyword,

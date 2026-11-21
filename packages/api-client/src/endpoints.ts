@@ -10,6 +10,7 @@ import type {
   CategorySortRequest,
   ConfigItem,
   ConsoleSession,
+  ConsoleAccount,
   Coupon,
   CouponState,
   CreateOrderRequest,
@@ -221,6 +222,11 @@ export const merchant = {
 export const platform = {
   overview: () => get<PlatformOverview>("/platform/overview"),
   users: (params: ListPlatformUsersParams) => get<Page<PlatformUserRow>>("/platform/users", { ...params }),
+  merchantAccounts: () => get<ConsoleAccount[]>("/platform/users/merchant-accounts"),
+  resetUserPassword: (userId: string, newPassword: string) =>
+    patch<void>(`/platform/users/${userId}/password`, { newPassword }),
+  resetMerchantPassword: (accountId: string, newPassword: string) =>
+    patch<void>(`/platform/users/merchant-accounts/${accountId}/password`, { newPassword }),
   userSummary: () => get<PlatformUserSummary>("/platform/users/summary"),
   userImportTemplate: () => get<UserImportFile>("/platform/users/import/template"),
   previewUserImport: (body: UserImportFile) => post<UserImportResult>("/platform/users/import/preview", body),

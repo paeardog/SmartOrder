@@ -48,7 +48,11 @@ class PlatformControllerTest {
                 mock(DishMapper.class), mock(OrderMapper.class), mock(PickupPointMapper.class),
                 mock(SysConfigMapper.class), openState, mock(MerchantStatsService.class), profiles,
                 new SmartOrderProperties("Asia/Shanghai", null, null, null, null), new ObjectMapper(), mock(CampusAreaService.class));
-        mvc = MockMvcBuilders.standaloneSetup(new PlatformController(service))
+        mvc = MockMvcBuilders.standaloneSetup(new PlatformController(service,
+                        new com.campus.smartorder.system.service.OperationLogService(
+                                mock(com.campus.smartorder.system.mapper.OperationLogMapper.class), new ObjectMapper())))
+                .defaultRequest(get("/").requestAttr(ConsoleAccess.SUBJECT_TYPE, "ACCOUNT")
+                        .requestAttr(ConsoleAccess.ROLE_CODE, "PLATFORM_ADMIN").requestAttr(ConsoleAccess.ACCOUNT_ID, 1L))
                 .setControllerAdvice(new GlobalExceptionHandler()).build();
         merchant = new Merchant();
         merchant.setId(10L);
@@ -57,6 +61,52 @@ class PlatformControllerTest {
         merchant.setRejectReason("");
         when(profiles.require(10L)).thenReturn(merchant);
         when(openState.statesOf(eq(List.of(10L)), any())).thenReturn(Map.of());
+    }
+
+    @Test
+    void exposesCreateAndProfileRoutesWithTypedWhitelist() throws Exception {
+        PlatformService service = mock(PlatformService.class);
+        MockMvc profileMvc = MockMvcBuilders.standaloneSetup(new PlatformController(service,
+                        new com.campus.smartorder.system.service.OperationLogService(
+                                mock(com.campus.smartorder.system.mapper.OperationLogMapper.class), new ObjectMapper())))
+                .defaultRequest(get("/").requestAttr(ConsoleAccess.SUBJECT_TYPE, "ACCOUNT")
+                        .requestAttr(ConsoleAccess.ROLE_CODE, "PLATFORM_ADMIN").requestAttr(ConsoleAccess.ACCOUNT_ID, 1L))
+                .setControllerAdvice(new GlobalExceptionHandler()).build();
+        String body = """
+                {"profile":{"name":"新档口","categoryCode":"RICE","status":1,"ratingScore":100,"monthSold":999},
+                 "pickupPointId":"2","status":1}
+                """;
+        profileMvc.perform(post("/api/v1/platform/merchants").contentType(MediaType.APPLICATION_JSON).content(body))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.code").value(0));
+        var request = org.mockito.ArgumentCaptor.forClass(PlatformDto.MerchantProfileRequest.class);
+        verify(service).createMerchant(request.capture());
+        assertEquals("新档口", request.getValue().profile().name());
+        assertEquals("2", request.getValue().pickupPointId());
+        assertFalse(java.util.Arrays.stream(request.getValue().profile().getClass().getRecordComponents())
+                .anyMatch(component -> List.of("status", "ratingScore", "monthSold").contains(component.getName())));
+        profileMvc.perform(get("/api/v1/platform/merchants/10/profile"))
+                .andExpect(jsonPath("$.code").value(0));
+        verify(service).merchantProfile(10L);
+        profileMvc.perform(patch("/api/v1/platform/merchants/10/profile")
+                        .contentType(MediaType.APPLICATION_JSON).content(body))
+                .andExpect(jsonPath("$.code").value(0));
+        verify(service).patchMerchantProfile(eq(10L), any(PlatformDto.MerchantProfileRequest.class));
+        profileMvc.perform(get("/api/v1/platform/merchant-categories"))
+                .andExpect(jsonPath("$.code").value(0));
+        verify(service).merchantCategories();
+    }
+
+    @ParameterizedTest
+    @CsvSource({"ACCOUNT,MERCHANT_OWNER", "ACCOUNT,MERCHANT_STAFF", "USER,PLATFORM_ADMIN"})
+    void rejectsNonPlatformRequestsAtController(String subject, String role) throws Exception {
+        mvc.perform(post("/api/v1/platform/merchants")
+                        .requestAttr(ConsoleAccess.SUBJECT_TYPE, subject).requestAttr(ConsoleAccess.ROLE_CODE, role)
+                        .contentType(MediaType.APPLICATION_JSON).content("{\"profile\":{},\"pickupPointId\":\"2\"}"))
+                .andExpect(status().isForbidden());
+        mvc.perform(get("/api/v1/platform/merchants")
+                        .requestAttr(ConsoleAccess.SUBJECT_TYPE, subject).requestAttr(ConsoleAccess.ROLE_CODE, role))
+                .andExpect(status().isForbidden());
+        verifyNoInteractions(merchants, profiles);
     }
 
     @Test

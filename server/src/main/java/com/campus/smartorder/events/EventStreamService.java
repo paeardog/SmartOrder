@@ -52,6 +52,20 @@ public class EventStreamService {
         this.platformUserService = platformUserService;
     }
 
+    private final Map<SseEmitter, java.util.function.BooleanSupplier> accountGuards = new ConcurrentHashMap<>();
+
+    public SseEmitter subscribeAccount(java.util.function.Supplier<com.campus.smartorder.auth.domain.SysAccount> current) {
+        var account = current.get();
+        Long merchantId = account.getMerchantId();
+        CopyOnWriteArrayList<SseEmitter> channel = merchantId == null ? anonymousChannels
+                : merchantChannels.computeIfAbsent(merchantId, key -> new CopyOnWriteArrayList<>());
+        return register(channel, merchantId == null ? null : merchantChannels, merchantId, () -> {
+            var latest = current.get();
+            return latest.enabled() && java.util.Objects.equals(account.getRoleCode(), latest.getRoleCode())
+                    && java.util.Objects.equals(merchantId, latest.getMerchantId());
+        });
+    }
+
     public SseEmitter subscribeMerchant(Long merchantId) {
         CopyOnWriteArrayList<SseEmitter> channel = merchantId == null
                 ? anonymousChannels
@@ -178,9 +192,17 @@ public class EventStreamService {
 
     private SseEmitter register(CopyOnWriteArrayList<SseEmitter> channel,
                                  Map<Long, CopyOnWriteArrayList<SseEmitter>> registry, Long key) {
+        return register(channel, registry, key, null);
+    }
+
+    private SseEmitter register(CopyOnWriteArrayList<SseEmitter> channel,
+                               Map<Long, CopyOnWriteArrayList<SseEmitter>> registry, Long key,
+                               java.util.function.BooleanSupplier guard) {
         SseEmitter emitter = new SseEmitter(EMITTER_TTL_MILLIS);
+        if (guard != null) accountGuards.put(emitter, guard);
         channel.add(emitter);
         Runnable detach = () -> {
+            accountGuards.remove(emitter);
             channel.remove(emitter);
             if (registry != null && key != null && channel.isEmpty()) {
                 registry.remove(key, channel);
@@ -211,10 +233,24 @@ public class EventStreamService {
 
     private void send(SseEmitter emitter, String name, Object data) {
         try {
+            var guard = accountGuards.get(emitter);
+            if (guard != null && !guard.getAsBoolean()) {
+                detachAccount(emitter);
+                return;
+            }
             emitter.send(SseEmitter.event().name(name).data(data));
+        } catch (BizException ex) {
+            detachAccount(emitter);
         } catch (IOException | IllegalStateException ex) {
             emitter.complete();
         }
+    }
+
+    private void detachAccount(SseEmitter emitter) {
+        accountGuards.remove(emitter);
+        anonymousChannels.remove(emitter);
+        merchantChannels.values().forEach(channel -> channel.remove(emitter));
+        emitter.complete();
     }
 
     private LocalDateTime now() {

@@ -147,6 +147,22 @@ public class PlatformService {
         return rows;
     }
 
+    public MerchantConsoleDto.Profile createMerchant(PlatformDto.MerchantProfileRequest body) {
+        return platformMerchantService.create(body.profile(), body.pickupPointId());
+    }
+
+    public MerchantConsoleDto.Profile merchantProfile(Long merchantId) {
+        return profileService.profile(merchantId);
+    }
+
+    public MerchantConsoleDto.Profile patchMerchantProfile(Long merchantId, PlatformDto.MerchantProfileRequest body) {
+        return platformMerchantService.patchProfile(merchantId, body.profile(), body.pickupPointId());
+    }
+
+    public List<MerchantConsoleDto.CategoryOption> merchantCategories() {
+        return profileService.categoryOptions();
+    }
+
     public PlatformDto.AuditRow approve(Long merchantId) {
         return rowOf(platformMerchantService.approve(merchantId));
     }

@@ -104,6 +104,10 @@ function useDemo(name: string): void {
   max-width: 380px;
 }
 
+.login__panel .so-field {
+  display: block;
+}
+
 .login__brand {
   margin-bottom: 1.5rem;
 }
@@ -133,6 +137,7 @@ function useDemo(name: string): void {
 
 .login__demo-row {
   display: flex;
+  flex-wrap: wrap;
   gap: 0.4rem;
   margin-top: 0.4rem;
 }

@@ -2,7 +2,8 @@
 import { computed, onBeforeUnmount, ref, watch } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import type { MerchantAuditRow, MerchantStatus } from "@smartorder/api-client";
-import { ApiError, businessOf, platform } from "@smartorder/api-client";
+import { ApiError, businessOf, catalog, platform, platformMerchants } from "@smartorder/api-client";
+import type { MerchantCategoryOption, MerchantProfileUpdateRequest, PickupPoint } from "@smartorder/api-client";
 import { CATEGORY_LABELS, MERCHANT_STATUS_LABELS, MERCHANT_STATUS_TONES, groupThousands } from "@smartorder/shared";
 import UiModal from "../components/UiModal.vue";
 import { toastError, toastOk } from "../stores/toasts";
@@ -21,6 +22,92 @@ const action = ref<{ row: MerchantAuditRow; kind: "approve" | "reject" | "status
 const reason = ref("");
 const submitting = ref(false);
 let requestId = 0;
+
+const editor = ref<{ id: string } | null>(null);
+const editorLoading = ref(false);
+const editorReady = ref(false);
+const editorError = ref("");
+const saving = ref(false);
+const points = ref<PickupPoint[]>([]);
+const categories = ref<MerchantCategoryOption[]>([]);
+const pickupPointId = ref("");
+const form = ref<Required<MerchantProfileUpdateRequest>>(emptyForm());
+let editorRequest = 0;
+const textFields = [
+  { key: "name", label: "档口名称", max: 64, required: true },
+  { key: "contactName", label: "联系人", max: 32 },
+  { key: "contactPhone", label: "手机号", max: 11 },
+  { key: "licenseNo", label: "证照编号", max: 64 },
+  { key: "settleAccount", label: "结算标识", max: 64 },
+  { key: "logoUrl", label: "Logo 地址", max: 512 },
+] as const;
+
+function emptyForm(): Required<MerchantProfileUpdateRequest> {
+  return { name: "", categoryCode: "", description: "", logoUrl: "", contactName: "", contactPhone: "", licenseNo: "", settleAccount: "", minOrderAmount: 0, packFee: 0, avgPrepareMinutes: 10 };
+}
+
+function closeEditor(): void {
+  if (saving.value) return;
+  editorRequest++;
+  editor.value = null;
+}
+
+async function openEditor(id = ""): Promise<void> {
+  const request = ++editorRequest;
+  editor.value = { id };
+  editorLoading.value = true;
+  editorReady.value = false;
+  editorError.value = "";
+  form.value = emptyForm();
+  pickupPointId.value = "";
+  try {
+    const [availablePoints, availableCategories, profile] = await Promise.all([
+      catalog.pickupPoints(), platformMerchants.categories(), id ? platformMerchants.profile(id) : Promise.resolve(null),
+    ]);
+    if (request !== editorRequest) return;
+    points.value = availablePoints;
+    categories.value = availableCategories;
+    editorReady.value = true;
+    if (profile) {
+      for (const key of Object.keys(form.value) as Array<keyof MerchantProfileUpdateRequest>) {
+        Object.assign(form.value, { [key]: profile[key] });
+      }
+      pickupPointId.value = profile.pickupPointId;
+    }
+  } catch (caught) {
+    if (request === editorRequest) editorError.value = caught instanceof ApiError ? caught.message : "资料读取失败，请重试";
+  } finally {
+    if (request === editorRequest) editorLoading.value = false;
+  }
+}
+
+async function saveProfile(): Promise<void> {
+  const current = editor.value;
+  if (!current || saving.value || editorLoading.value || !editorReady.value) return;
+  if (!form.value.name.trim() || !categories.value.some(item => item.code === form.value.categoryCode)
+      || !points.value.some(item => item.pickupPointId === pickupPointId.value)) {
+    editorError.value = "请填写名称并选择有效品类和自提点";
+    return;
+  }
+  if (form.value.contactPhone && !/^1[3-9]\d{9}$/.test(form.value.contactPhone)) {
+    editorError.value = "请输入合法手机号";
+    return;
+  }
+  saving.value = true;
+  editorError.value = "";
+  try {
+    const body = { profile: { ...form.value, name: form.value.name.trim() }, pickupPointId: pickupPointId.value };
+    if (current.id) await platformMerchants.update(current.id, body);
+    else await platformMerchants.create(body);
+    editor.value = null;
+    toastOk(current.id ? "档口资料已保存" : "档口已创建，等待审核；请另行关联账号并设置营业时间");
+    await load();
+  } catch (caught) {
+    editorError.value = caught instanceof ApiError ? caught.message : "保存失败，请重试";
+  } finally {
+    saving.value = false;
+  }
+}
 
 const tabs: ReadonlyArray<{ key: MerchantStatus | "ALL"; label: string }> = [
   { key: "ALL", label: "全部" }, { key: 0, label: "待审核" }, { key: 1, label: "正常" },
@@ -89,7 +176,7 @@ async function confirmAction(): Promise<void> {
 
 watch([status, keyword, campus, pageSize], () => { page.value = 1; });
 watch(pages, (value) => { page.value = Math.min(page.value, value); });
-onBeforeUnmount(() => { requestId++; });
+onBeforeUnmount(() => { requestId++; editorRequest++; });
 void load();
 </script>
 
@@ -100,6 +187,7 @@ void load();
         <button v-for="tab in tabs" :key="String(tab.key)" class="so-segment__item" :class="{ 'so-segment__item--active': status === tab.key }" type="button" role="tab" :aria-selected="status === tab.key" @click="pick(tab.key)">{{ tab.label }}</button>
       </div>
       <span class="so-topbar__spacer" />
+      <button class="so-btn so-btn--primary so-btn--sm" type="button" :disabled="saving" @click="openEditor()">新建档口</button>
       <button class="so-btn so-btn--ghost so-btn--sm" type="button" :disabled="loading || submitting" @click="load">刷新</button>
     </div>
     <div class="so-toolbar">
@@ -127,6 +215,7 @@ void load();
               <td><span class="so-tag" :class="'so-tag--' + MERCHANT_STATUS_TONES[row.status]">{{ MERCHANT_STATUS_LABELS[row.status] }}</span><div v-if="row.status === 1" class="so-order__opt">{{ businessOf(row).label }}</div></td>
               <td class="so-cell--act">
                 <button class="so-btn so-btn--ghost so-btn--sm" type="button" @click="detail = row">详情</button>
+                <button class="so-btn so-btn--ghost so-btn--sm" type="button" :disabled="saving" @click="openEditor(row.merchantId)">编辑资料</button>
                 <button v-if="row.status === 0 || row.status === 4" class="so-btn so-btn--ok so-btn--sm" type="button" :disabled="submitting" @click="openAction(row, 'approve')">{{ row.status === 4 ? "重新通过" : "通过" }}</button>
                 <button v-if="row.status === 0" class="so-btn so-btn--danger so-btn--sm" type="button" :disabled="submitting" @click="openAction(row, 'reject')">驳回</button>
                 <button v-if="row.status === 1" class="so-btn so-btn--ghost so-btn--sm" type="button" :disabled="submitting" @click="openAction(row, 'status', 2)">停用</button>
@@ -143,6 +232,23 @@ void load();
       <select v-model.number="pageSize" class="so-select" style="width: 100px" aria-label="每页条数"><option v-for="size in [20, 50, 100]" :key="size" :value="size">{{ size }} 条</option></select>
       <button class="so-btn so-btn--ghost so-btn--sm" type="button" :disabled="loading || page <= 1" @click="page--">上一页</button><span>{{ page }} / {{ pages }}</span><button class="so-btn so-btn--ghost so-btn--sm" type="button" :disabled="loading || page >= pages" @click="page++">下一页</button>
     </div>
+    <UiModal v-if="editor" :title="editor.id ? '编辑档口资料' : '新建档口'" @close="closeEditor">
+      <div v-if="editorLoading" class="so-loading"><span class="so-spinner" />读取资料</div>
+      <div v-if="editorError" class="so-banner so-banner--danger" role="alert">{{ editorError }}<button class="so-btn so-btn--ghost so-btn--sm" :disabled="saving" @click="openEditor(editor.id)">重新读取</button></div>
+      <form v-if="!editorLoading" id="platform-merchant-form" @submit.prevent="saveProfile">
+        <p class="so-field__hint" style="margin-bottom: 1rem">仅修改基础资料，不修改评分、销量与审核状态。新建档口需审核、关联账号并设置营业时间后才能接单。</p>
+        <fieldset :disabled="saving" style="border: 0; padding: 0; display: grid; gap: 1rem">
+          <label v-for="field in textFields" :key="field.key" class="so-field"><span class="so-field__label">{{ field.label }}</span><input v-model="form[field.key]" class="so-input" :maxlength="field.max" :required="field.key === 'name'" :type="field.key === 'contactPhone' ? 'tel' : 'text'" /></label>
+          <label class="so-field"><span class="so-field__label">品类</span><select v-model="form.categoryCode" class="so-select" required><option value="" disabled>请选择品类</option><option v-for="item in categories" :key="item.code" :value="item.code">{{ item.name }}</option></select><span v-if="!categories.length" class="so-field__hint">暂无可用品类，请联系平台配置</span></label>
+          <label class="so-field"><span class="so-field__label">自提点</span><select v-model="pickupPointId" class="so-select" required><option value="" disabled>请选择启用的自提点</option><option v-for="point in points" :key="point.pickupPointId" :value="point.pickupPointId">{{ point.campusArea }} / {{ point.name }}</option></select><span v-if="!points.length" class="so-field__hint">暂无可用自提点，请先维护自提点</span></label>
+          <label class="so-field"><span class="so-field__label">简介</span><textarea v-model="form.description" class="so-textarea" maxlength="500" /></label>
+          <label class="so-field"><span class="so-field__label">起购金额（分）</span><input v-model.number="form.minOrderAmount" class="so-input" type="number" min="0" max="1000000" step="1" required /></label>
+          <label class="so-field"><span class="so-field__label">打包费（分）</span><input v-model.number="form.packFee" class="so-input" type="number" min="0" max="100000" step="1" required /></label>
+          <label class="so-field"><span class="so-field__label">预计出餐（分钟）</span><input v-model.number="form.avgPrepareMinutes" class="so-input" type="number" min="1" max="180" step="1" required /></label>
+        </fieldset>
+      </form>
+      <template #footer><button class="so-btn so-btn--secondary" :disabled="saving" @click="closeEditor">取消</button><button class="so-btn so-btn--primary" type="submit" form="platform-merchant-form" :disabled="saving || editorLoading || !editorReady || !points.length || !categories.length">{{ saving ? '保存中' : '保存' }}</button></template>
+    </UiModal>
     <UiModal v-if="detail" title="档口详情" @close="detail = null">
       <div class="so-kv"><span class="so-kv__key">档口</span><span class="so-kv__val">{{ detail.name }}</span></div>
       <div class="so-kv"><span class="so-kv__key">编号</span><span class="so-kv__val">{{ detail.merchantId }}</span></div>

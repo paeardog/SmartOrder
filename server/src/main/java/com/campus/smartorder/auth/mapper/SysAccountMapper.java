@@ -9,6 +9,12 @@ import org.apache.ibatis.annotations.Select;
 @Mapper
 public interface SysAccountMapper extends BaseMapper<SysAccount> {
 
+    @Select("SELECT * FROM sys_account WHERE role_code = 'PLATFORM_ADMIN' ORDER BY id FOR UPDATE")
+    java.util.List<SysAccount> lockAdministrators();
+
+    @Select("SELECT * FROM sys_account WHERE id = #{id} FOR UPDATE")
+    SysAccount lockById(@Param("id") Long id);
+
     @Select("SELECT * FROM sys_account WHERE username = #{username} LIMIT 1")
     SysAccount selectByUsername(@Param("username") String username);
 }

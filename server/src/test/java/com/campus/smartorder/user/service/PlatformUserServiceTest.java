@@ -30,7 +30,45 @@ class PlatformUserServiceTest {
 
     private final UserMapper users = mock(UserMapper.class);
     private final OrderMapper orders = mock(OrderMapper.class);
-    private final PlatformUserService service = new PlatformUserService(users, orders);
+    private final com.campus.smartorder.auth.service.PasswordHasher passwords = new com.campus.smartorder.auth.service.PasswordHasher(
+            new com.campus.smartorder.common.config.SmartOrderProperties("Asia/Shanghai", null, null, null, null));
+    private final PlatformUserService service = new PlatformUserService(users, orders, passwords);
+
+    @Test
+    void createsStudentWithoutLoginSessionAndHashesPassword() {
+        when(users.insert(any(User.class))).thenAnswer(call -> {
+            User user = call.getArgument(0);
+            assertEquals("20260001", user.getStudentNo());
+            assertTrue(passwords.matches("secret12", user.getPasswordHash()));
+            assertNull(user.getLastLoginAt());
+            assertEquals(1, user.getStatus());
+            assertEquals(User.VERIFY_PENDING, user.getVerifyStatus());
+            user.setId(99L);
+            return 1;
+        });
+        var row = service.create(new PlatformUserDto.CreateRequest("20260001", "secret12", "学生", "13800000000"));
+        assertEquals("99", row.userId());
+        assertEquals("学生", row.realName());
+        assertNull(row.lastLoginAt());
+        verify(users).insert(any(User.class));
+        verifyNoMoreInteractions(users);
+        verifyNoInteractions(orders);
+    }
+
+    @Test
+    void creationRejectsInvalidStudentNumbersPasswordAndUniqueConflicts() {
+        for (String no : java.util.List.of("abc12345", "1234", "1234567890123", " 20260001")) {
+            assertEquals(ErrorCode.STUDENT_NO_INVALID, assertThrows(BizException.class,
+                    () -> service.create(new PlatformUserDto.CreateRequest(no, "secret12", "学生", ""))).errorCode());
+        }
+        for (String password : java.util.List.of("12345", "      ", "x".repeat(65))) {
+            assertThrows(BizException.class, () -> service.create(new PlatformUserDto.CreateRequest("20260001", password, "学生", "")));
+        }
+        verify(users, never()).insert(any(User.class));
+        when(users.insert(any(User.class))).thenThrow(new org.springframework.dao.DuplicateKeyException("uk_u_user_student_no"));
+        assertEquals(ErrorCode.USER_STUDENT_NO_EXISTS, assertThrows(BizException.class,
+                () -> service.create(new PlatformUserDto.CreateRequest("20260001", "secret12", "学生", ""))).errorCode());
+    }
 
     @BeforeAll
     static void initializeMetadata() {

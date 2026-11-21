@@ -49,6 +49,19 @@ public class RefundService {
 
     @Transactional
     public OrderDto.RefundView audit(Long merchantId, Long accountId, String refundNo, boolean approved, String note) {
+        return auditCore(merchantId, accountId, refundNo, approved, note, OperatorType.MERCHANT);
+    }
+
+    @Transactional
+    public OrderDto.RefundView platformAudit(Long accountId, String refundNo, boolean approved, String note) {
+        if (accountId == null) {
+            throw new BizException(ErrorCode.FORBIDDEN);
+        }
+        return auditCore(null, accountId, refundNo, approved, note, OperatorType.PLATFORM);
+    }
+
+    private OrderDto.RefundView auditCore(Long merchantId, Long accountId, String refundNo, boolean approved,
+                                         String note, OperatorType operatorType) {
         String text = Ids.blank(note).trim();
         if (text.length() > 255 || (!approved && text.isEmpty())) {
             throw new BizException(ErrorCode.INVALID_PARAM, "驳回须填写原因，审核说明不能超过 255 字");
@@ -57,18 +70,18 @@ public class RefundService {
         if (refund == null) {
             throw new BizException(ErrorCode.RESOURCE_NOT_FOUND, "退款申请不存在");
         }
-        if (!Objects.equals(merchantId, refund.getMerchantId())) {
+        if (operatorType == OperatorType.MERCHANT && !Objects.equals(merchantId, refund.getMerchantId())) {
             throw new BizException(ErrorCode.FORBIDDEN, "不能审核其他档口的退款");
         }
         Order order = orderMapper.selectByIdForUpdate(refund.getOrderId());
         if (order == null) {
             throw new BizException(ErrorCode.ORDER_NOT_FOUND);
         }
-        if (!Objects.equals(merchantId, order.getMerchantId()) || !Objects.equals(refund.getUserId(), order.getUserId())) {
+        if (!Objects.equals(refund.getMerchantId(), order.getMerchantId()) || !Objects.equals(refund.getUserId(), order.getUserId())) {
             throw new BizException(ErrorCode.FORBIDDEN);
         }
         String target = approved ? Refund.STATUS_SUCCEEDED : Refund.STATUS_REJECTED;
-        if (target.equals(refund.getStatus())) {
+        if (operatorType == OperatorType.MERCHANT && target.equals(refund.getStatus())) {
             return view(refund, order);
         }
         if (!Refund.STATUS_PENDING.equals(refund.getStatus()) || order.getStatus() != OrderStatus.REFUNDING) {
@@ -114,9 +127,9 @@ public class RefundService {
         log.setOrderId(order.getId());
         log.setFromStatus(OrderStatus.REFUNDING);
         log.setToStatus(next);
-        log.setOperatorType(OperatorType.MERCHANT);
+        log.setOperatorType(operatorType);
         log.setOperatorId(accountId);
-        log.setOperatorName("档口负责人");
+        log.setOperatorName(operatorType == OperatorType.PLATFORM ? "平台管理员 #" + accountId : "档口负责人");
         log.setNote(text.isEmpty() ? "同意退款" : text);
         log.setCreatedAt(now);
         statusLogMapper.insert(log);

@@ -200,6 +200,88 @@ class RefundServiceTest {
         verifyNoInteractions(orderService);
     }
 
+    @Test
+    void platformApprovesAcrossMerchantsAndRecordsActualOperator() {
+        var result = service.platformAudit(99L, refund.getRefundNo(), true, "平台核实");
+        assertEquals(Refund.STATUS_SUCCEEDED, result.status());
+        assertEquals(99L, refund.getAuditorId());
+        ArgumentCaptor<OrderStatusLog> saved = ArgumentCaptor.forClass(OrderStatusLog.class);
+        verify(logs).insert(saved.capture());
+        assertEquals(com.campus.smartorder.order.domain.OperatorType.PLATFORM, saved.getValue().getOperatorType());
+        assertEquals(99L, saved.getValue().getOperatorId());
+        verify(payments).requireRefundablePayment(10L, 1200);
+        verify(orderService).releaseHeldResources(order);
+    }
+
+    @ParameterizedTest
+    @org.junit.jupiter.params.provider.ValueSource(strings = {"SUCCEEDED", "REJECTED"})
+    void platformCannotOverwriteOrReplayProcessedRefund(String status) {
+        refund.setStatus(status);
+        refund.setAuditorId(40L);
+        assertError(ErrorCode.ORDER_STATUS_ILLEGAL, () -> service.platformAudit(99L, refund.getRefundNo(), true, "同意"));
+        assertError(ErrorCode.ORDER_STATUS_ILLEGAL, () -> service.platformAudit(99L, refund.getRefundNo(), false, "驳回"));
+        assertEquals(40L, refund.getAuditorId());
+        verify(refunds, never()).updateById(any(Refund.class));
+        verifyNoInteractions(payments, orderService, logs);
+    }
+
+    @ParameterizedTest
+    @EnumSource(value = OrderStatus.class, names = {"PAID", "ACCEPTED", "COOKING"})
+    void platformRejectionOnlyRestoresRecordedState(OrderStatus previous) {
+        application.setFromStatus(previous);
+        service.platformAudit(99L, refund.getRefundNo(), false, "核实后驳回");
+        verify(orders).casRestoreFromRefunding(10L, previous);
+        verifyNoInteractions(payments, orderService);
+    }
+
+    @ParameterizedTest
+    @org.junit.jupiter.params.provider.ValueSource(ints = {-1, 1100, 1300})
+    void platformRetainsAmountProtection(int amount) {
+        refund.setRefundAmount(amount);
+        assertError(ErrorCode.PAYMENT_AMOUNT_MISMATCH, () -> service.platformAudit(99L, refund.getRefundNo(), true, ""));
+        verify(orders, never()).casToRefunded(anyLong());
+        verifyNoInteractions(payments, orderService);
+    }
+
+    @Test
+    void platformRetainsSuccessfulRefundAndOrderStateProtection() {
+        when(refunds.selectCount(any())).thenReturn(1L);
+        assertError(ErrorCode.ORDER_REFUND_NOT_ALLOWED, () -> service.platformAudit(99L, refund.getRefundNo(), true, ""));
+        order.setStatus(OrderStatus.COMPLETED);
+        assertError(ErrorCode.ORDER_STATUS_ILLEGAL, () -> service.platformAudit(99L, refund.getRefundNo(), true, ""));
+        verify(refunds, never()).updateById(any(Refund.class));
+        verifyNoInteractions(payments, orderService);
+    }
+
+    @ParameterizedTest
+    @org.junit.jupiter.params.provider.ValueSource(booleans = {true, false})
+    void platformRetainsCasProtection(boolean approved) {
+        when(orders.casToRefunded(10L)).thenReturn(0);
+        when(orders.casRestoreFromRefunding(10L, OrderStatus.PAID)).thenReturn(0);
+        assertError(ErrorCode.ORDER_CONCURRENT_MODIFIED,
+                () -> service.platformAudit(99L, refund.getRefundNo(), approved, "核实"));
+        verify(refunds, never()).updateById(any(Refund.class));
+        verify(logs, never()).insert(any(OrderStatusLog.class));
+        verifyNoInteractions(orderService);
+    }
+
+    @Test
+    void platformLocksRefundBeforeOrderAndStillChecksOwnershipConsistency() {
+        order.setMerchantId(31L);
+        assertError(ErrorCode.FORBIDDEN, () -> service.platformAudit(99L, refund.getRefundNo(), true, ""));
+        var sequence = inOrder(refunds, orders);
+        sequence.verify(refunds).selectByRefundNoForUpdate(refund.getRefundNo());
+        sequence.verify(orders).selectByIdForUpdate(10L);
+        verifyNoInteractions(payments, orderService);
+    }
+
+    @Test
+    void platformRequiresAuditorAndRejectionReason() {
+        assertError(ErrorCode.FORBIDDEN, () -> service.platformAudit(null, refund.getRefundNo(), true, ""));
+        assertError(ErrorCode.INVALID_PARAM, () -> service.platformAudit(99L, refund.getRefundNo(), false, " "));
+        verifyNoInteractions(refunds, orders, payments, orderService);
+    }
+
     private com.campus.smartorder.order.api.OrderDto.RefundView audit(boolean approved, String note) {
         return service.audit(30L, 40L, refund.getRefundNo(), approved, note);
     }

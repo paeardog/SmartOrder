@@ -1,8 +1,11 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, ref, watch } from "vue";
 import { useRoute, useRouter } from "vue-router";
-import { ApiError, platform } from "@smartorder/api-client";
+import { ApiError, platform, platformAccounts } from "@smartorder/api-client";
+import type { ManagedAccountRole, MerchantAuditRow } from "@smartorder/api-client";
+import { consoleState } from "../stores/session";
 import type {
+  ConsoleAccount,
   PlatformUserProfileUpdate,
   PlatformUserRow,
   PlatformUserSummary,
@@ -16,6 +19,176 @@ import { toastError, toastOk } from "../stores/toasts";
 
 const route = useRoute();
 const router = useRouter();
+const tab = ref<"students" | "merchants" | "admins">("students");
+const accountStatus = ref<"" | "0" | "1">("");
+let accountRequestId = 0;
+const manager = ref<{ kind: "students" | "merchants" | "admins"; row: ConsoleAccount | null } | null>(null);
+const accountForm = ref({ username: "", realName: "", phone: "", password: "", confirmation: "", roleCode: "MERCHANT_OWNER" as ManagedAccountRole, merchantId: "" });
+const managerSaving = ref(false);
+const managerError = ref("");
+const managerConfirm = ref(false);
+const merchantOptions = ref<MerchantAuditRow[]>([]);
+const merchantLoading = ref(false);
+const merchantError = ref("");
+let merchantRequestId = 0;
+const accountChanging = ref<ConsoleAccount | null>(null);
+const accountChangingSaving = ref(false);
+const accountChangingError = ref("");
+
+async function loadMerchantOptions(): Promise<void> {
+  const id = ++merchantRequestId;
+  merchantLoading.value = true;
+  merchantError.value = "";
+  try {
+    const result = await platform.merchants();
+    if (id === merchantRequestId) merchantOptions.value = result;
+  } catch (caught) {
+    if (id === merchantRequestId) merchantError.value = caught instanceof ApiError ? caught.message : "档口读取失败";
+  } finally {
+    if (id === merchantRequestId) merchantLoading.value = false;
+  }
+}
+
+function openManager(row: ConsoleAccount | null = null): void {
+  manager.value = { kind: tab.value, row };
+  managerError.value = "";
+  managerConfirm.value = false;
+  accountForm.value = { username: row?.username ?? "", realName: row?.realName ?? "", phone: row?.phone ?? "", password: "", confirmation: "", roleCode: (row?.roleCode ?? (tab.value === "admins" ? "PLATFORM_ADMIN" : "MERCHANT_OWNER")) as ManagedAccountRole, merchantId: row?.merchantId ?? "" };
+  if (tab.value === "merchants") void loadMerchantOptions();
+}
+
+function closeManager(): void {
+  if (managerSaving.value) return;
+  manager.value = null;
+  managerConfirm.value = false;
+  accountForm.value.password = "";
+  accountForm.value.confirmation = "";
+  managerError.value = "";
+  merchantRequestId++;
+}
+
+async function saveManager(): Promise<void> {
+  const current = manager.value;
+  if (!current || managerSaving.value) return;
+  const form = accountForm.value;
+  const name = form.realName.trim();
+  const phone = form.phone.trim();
+  if (!name || name.length > 32) { managerError.value = "姓名不能为空且不能超过32字"; return; }
+  if (phone && !/^1[3-9]\d{9}$/.test(phone)) { managerError.value = "手机号格式不正确"; return; }
+  if (!current.row) {
+    const valid = current.kind === "students" ? /^[0-9]{8,12}$/.test(form.username) : /^[A-Za-z0-9_][A-Za-z0-9_.-]{3,63}$/.test(form.username);
+    if (!valid) { managerError.value = current.kind === "students" ? "学号须为8至12位数字" : "登录名须为4至64位字母、数字、下划线、点或短横线"; return; }
+    if (!form.password.trim() || form.password.length < 6 || form.password.length > 64) { managerError.value = "密码须为6至64位且不能全部为空白"; return; }
+    if (form.password !== form.confirmation) { managerError.value = "两次输入的密码不一致"; return; }
+  }
+  if (current.kind === "merchants" && (merchantLoading.value || merchantError.value || !merchantOptions.value.some(row => row.merchantId === form.merchantId))) { managerError.value = "请选择有效档口"; return; }
+  managerError.value = "";
+  if (!managerConfirm.value) { managerConfirm.value = true; return; }
+  managerSaving.value = true;
+  try {
+    const profile = { realName: name, phone, roleCode: form.roleCode, merchantId: current.kind === "merchants" ? form.merchantId : null };
+    if (current.kind === "students") await platformAccounts.createStudent({ studentNo: form.username, password: form.password, realName: name, phone });
+    else if (current.row) await platformAccounts.update(current.row.accountId, profile);
+    else await platformAccounts.create({ ...profile, username: form.username, password: form.password });
+    managerSaving.value = false;
+    closeManager();
+    toastOk(current.row ? "账号资料已更新" : "账号已创建，请安全告知使用者登录信息");
+    if (current.kind === "students") await load(); else await loadAccounts();
+  } catch (caught) {
+    managerError.value = caught instanceof ApiError ? caught.message : "账号保存失败，请重试";
+    managerConfirm.value = false;
+  } finally { managerSaving.value = false; }
+}
+
+async function saveAccountStatus(): Promise<void> {
+  const row = accountChanging.value;
+  if (!row || accountChangingSaving.value) return;
+  accountChangingSaving.value = true;
+  accountChangingError.value = "";
+  try {
+    await platformAccounts.changeStatus(row.accountId, row.status === 1 ? 0 : 1, row.status === 1 ? 1 : 0);
+    accountChanging.value = null;
+    toastOk("账号状态已更新");
+    await loadAccounts();
+  } catch (caught) {
+    accountChangingError.value = caught instanceof ApiError ? caught.message : "状态更新失败";
+  } finally { accountChangingSaving.value = false; }
+}
+const accounts = ref<ConsoleAccount[]>([]);
+const accountSearch = ref("");
+const accountLoading = ref(false);
+const accountError = ref("");
+const filteredAccounts = computed(() => {
+  const text = accountSearch.value.trim().toLowerCase();
+  return accounts.value.filter((row) => (accountStatus.value === "" || String(row.status) === accountStatus.value) && [row.username, row.realName, row.phone, row.merchantName, row.merchantId ?? ""].some((value) => value.toLowerCase().includes(text)));
+});
+const passwordTarget = ref<{ id: string; name: string; kind: "student" | "merchant" } | null>(null);
+const newPassword = ref("");
+const confirmPassword = ref("");
+const passwordSaving = ref(false);
+const passwordError = ref("");
+
+async function loadAccounts(): Promise<void> {
+  const kind = tab.value;
+  if (kind === "students") return;
+  const id = ++accountRequestId;
+  accountLoading.value = true;
+  accountError.value = "";
+  accounts.value = [];
+  try {
+    const result = await platformAccounts.list(kind);
+    if (id === accountRequestId) accounts.value = result;
+  } catch (caught) {
+    if (id === accountRequestId) accountError.value = caught instanceof ApiError ? caught.message : "账号读取失败";
+  } finally {
+    if (id === accountRequestId) accountLoading.value = false;
+  }
+}
+
+function openPassword(row: PlatformUserRow | ConsoleAccount): void {
+  passwordTarget.value = "userId" in row
+    ? { id: row.userId, name: row.nickname || row.realName || row.userId, kind: "student" }
+    : { id: row.accountId, name: row.username, kind: "merchant" };
+  newPassword.value = "";
+  confirmPassword.value = "";
+  passwordError.value = "";
+}
+
+function closePassword(): void {
+  if (passwordSaving.value) return;
+  passwordTarget.value = null;
+  newPassword.value = "";
+  confirmPassword.value = "";
+  passwordError.value = "";
+}
+
+async function savePassword(): Promise<void> {
+  const target = passwordTarget.value;
+  if (!target || passwordSaving.value) return;
+  if (!newPassword.value.trim() || newPassword.value.length < 6 || newPassword.value.length > 64) {
+    passwordError.value = "密码须为 6–64 位，不能全部为空白";
+    return;
+  }
+  if (newPassword.value !== confirmPassword.value) {
+    passwordError.value = "两次输入的密码不一致";
+    return;
+  }
+  passwordSaving.value = true;
+  passwordError.value = "";
+  try {
+    if (target.kind === "student") await platform.resetUserPassword(target.id, newPassword.value);
+    else await platformAccounts.resetPassword(target.id, newPassword.value);
+    passwordSaving.value = false;
+    closePassword();
+    toastOk("密码已重置，请将新密码告知账号使用者");
+  } catch (caught) {
+    passwordError.value = caught instanceof ApiError ? caught.message : "密码重置失败，请重试";
+  } finally {
+    passwordSaving.value = false;
+  }
+}
+
+watch(tab, (value) => { accountRequestId++; accountSearch.value = ""; accountStatus.value = ""; if (value !== "students") void loadAccounts(); });
 const rows = ref<PlatformUserRow[]>([]);
 const summary = ref<PlatformUserSummary | null>(null);
 const draft = ref("");
@@ -240,12 +413,43 @@ async function confirmDelete(): Promise<void> {
 }
 
 watch([status, verifyStatus, pageSize], () => { page.value = 1; void load(); });
-onBeforeUnmount(() => { requestId++; });
+onBeforeUnmount(() => { requestId++; accountRequestId++; merchantRequestId++; accountForm.value.password = ""; accountForm.value.confirmation = ""; newPassword.value = ""; confirmPassword.value = ""; });
 void load();
 </script>
 
 <template>
   <div class="so-page">
+    <div class="so-toolbar" aria-label="账号类型">
+      <button class="so-btn so-btn--sm" :class="tab === 'students' ? 'so-btn--primary' : 'so-btn--ghost'" :aria-pressed="tab === 'students'" @click="tab = 'students'">学生用户</button>
+      <button class="so-btn so-btn--sm" :class="tab === 'merchants' ? 'so-btn--primary' : 'so-btn--ghost'" :aria-pressed="tab === 'merchants'" @click="tab = 'merchants'">商家账号</button>
+      <button class="so-btn so-btn--sm" :class="tab === 'admins' ? 'so-btn--primary' : 'so-btn--ghost'" :aria-pressed="tab === 'admins'" @click="tab = 'admins'">平台管理员</button>
+    </div>
+    <template v-if="tab !== 'students'">
+      <div class="so-toolbar">
+        <input v-model="accountSearch" class="so-input" style="width: 320px" type="search" aria-label="搜索后台账号" placeholder="档口 / 登录账号 / 姓名 / 手机号" />
+        <select v-model="accountStatus" class="so-select" aria-label="账号状态"><option value="">全部状态</option><option value="1">正常</option><option value="0">已禁用</option></select>
+        <button class="so-btn so-btn--primary so-btn--sm" @click="openManager()">{{ tab === 'admins' ? '新建管理员' : '新建商家账号' }}</button>
+        <span class="so-field__hint">{{ filteredAccounts.length }} 个账号</span>
+        <span class="so-topbar__spacer" />
+        <button class="so-btn so-btn--ghost so-btn--sm" :disabled="accountLoading" @click="loadAccounts">刷新</button>
+      </div>
+      <div v-if="accountError" class="so-banner so-banner--danger" role="alert"><span>{{ accountError }}</span><button class="so-btn so-btn--ghost so-btn--sm" @click="loadAccounts">重试</button></div>
+      <div v-if="accountLoading" class="so-loading"><span class="so-spinner" /><span>读取账号</span></div>
+      <div v-else-if="!accountError" class="so-card so-card--pad0">
+        <div v-if="!filteredAccounts.length" class="so-empty">没有符合条件的账号</div>
+        <div v-else class="so-table-wrap"><table class="so-table">
+          <thead><tr><th v-if="tab === 'merchants'">所属档口</th><th>登录账号</th><th>姓名</th><th>手机号</th><th>角色</th><th>状态</th><th class="so-cell--act">操作</th></tr></thead>
+          <tbody><tr v-for="row in filteredAccounts" :key="row.accountId">
+            <td v-if="tab === 'merchants'">{{ row.merchantName || '档口已不存在' }}<div class="so-order__opt">档口编号 {{ row.merchantId }}</div></td>
+            <td>{{ row.username }}<div class="so-order__opt">账号编号 {{ row.accountId }}</div></td>
+            <td>{{ row.realName || '未填写' }}</td><td>{{ row.phone || '未绑定' }}</td><td>{{ row.roleName }}</td>
+            <td><span class="so-tag" :class="row.status === 1 ? 'so-tag--ok' : 'so-tag--danger'">{{ row.status === 1 ? '正常' : '已禁用' }}</span></td>
+            <td class="so-cell--act"><button class="so-btn so-btn--ghost so-btn--sm" @click="openManager(row)">编辑</button><button class="so-btn so-btn--ghost so-btn--sm" @click="openPassword(row)">重置密码</button><button class="so-btn so-btn--ghost so-btn--sm" :disabled="row.accountId === consoleState.account?.accountId" @click="accountChanging = row; accountChangingError = ''">{{ row.status === 1 ? '禁用' : '启用' }}</button></td>
+          </tr></tbody>
+        </table></div>
+      </div>
+    </template>
+    <template v-else>
     <div v-if="summary" class="so-grid so-grid--4" style="margin-bottom: 1rem">
       <MetricCard label="用户总数" :value="groupThousands(summary.total)" foot="全部注册用户" />
       <MetricCard label="正常用户" :value="groupThousands(summary.normal)" accent="var(--ok)" />
@@ -259,6 +463,7 @@ void load();
       <select :value="verifyStatus ?? ''" class="so-select" style="width: 150px" aria-label="认证状态" @change="filter('verifyStatus', $event)"><option value="">全部认证状态</option><option v-for="(label, key) in VERIFY_STATUS_LABELS" :key="key" :value="key">{{ label }}</option></select>
       <button v-if="draft || keyword || status !== undefined || verifyStatus !== undefined" class="so-btn so-btn--ghost so-btn--sm" type="button" @click="resetFilters">清空筛选</button>
       <span class="so-topbar__spacer" />
+      <button class="so-btn so-btn--primary so-btn--sm" type="button" @click="openManager()">新建学生</button>
       <UserImportActions @imported="load" />
       <button class="so-btn so-btn--ghost so-btn--sm" type="button" :disabled="loading || submitting" @click="load">刷新</button>
     </form>
@@ -277,7 +482,7 @@ void load();
               <td><span class="so-tag" :class="row.verifyStatus === 2 ? 'so-tag--ok' : row.verifyStatus === 1 ? 'so-tag--warn' : 'so-tag--muted'">{{ VERIFY_STATUS_LABELS[row.verifyStatus] }}</span></td>
               <td class="so-cell--num">{{ groupThousands(row.orderCount) }}</td>
               <td><span class="so-tag" :class="row.status === 1 ? 'so-tag--ok' : 'so-tag--danger'">{{ row.status === 1 ? "正常" : "已封禁" }}</span></td>
-              <td class="so-cell--act"><button class="so-btn so-btn--ghost so-btn--sm" type="button" @click="detail = row">详情</button><button v-if="row.verifyStatus === 1 || row.verifyStatus === 3" class="so-btn so-btn--ok so-btn--sm" type="button" :disabled="verifySaving" @click="openVerify(row, 'approve')">{{ row.verifyStatus === 3 ? "重新通过" : "通过" }}</button><button v-if="row.verifyStatus === 1" class="so-btn so-btn--danger so-btn--sm" type="button" :disabled="verifySaving" @click="openVerify(row, 'reject')">驳回</button><button class="so-btn so-btn--ghost so-btn--sm" type="button" @click="openEdit(row)">编辑</button><button class="so-btn so-btn--sm" :class="row.status === 1 ? 'so-btn--danger' : 'so-btn--ok'" type="button" :disabled="submitting" @click="openChange(row)">{{ row.status === 1 ? "封禁" : "解禁" }}</button><button class="so-btn so-btn--danger so-btn--sm" type="button" :disabled="deleteSaving" @click="openDelete(row)">删除</button></td>
+              <td class="so-cell--act"><button class="so-btn so-btn--ghost so-btn--sm" type="button" @click="detail = row">详情</button><button v-if="row.verifyStatus === 1 || row.verifyStatus === 3" class="so-btn so-btn--ok so-btn--sm" type="button" :disabled="verifySaving" @click="openVerify(row, 'approve')">{{ row.verifyStatus === 3 ? "重新通过" : "通过" }}</button><button v-if="row.verifyStatus === 1" class="so-btn so-btn--danger so-btn--sm" type="button" :disabled="verifySaving" @click="openVerify(row, 'reject')">驳回</button><button class="so-btn so-btn--ghost so-btn--sm" type="button" @click="openEdit(row)">编辑</button><button class="so-btn so-btn--ghost so-btn--sm" type="button" @click="openPassword(row)">重置密码</button><button class="so-btn so-btn--sm" :class="row.status === 1 ? 'so-btn--danger' : 'so-btn--ok'" type="button" :disabled="submitting" @click="openChange(row)">{{ row.status === 1 ? "封禁" : "解禁" }}</button><button class="so-btn so-btn--danger so-btn--sm" type="button" :disabled="deleteSaving" @click="openDelete(row)">删除</button></td>
             </tr>
           </tbody>
         </table>
@@ -288,6 +493,44 @@ void load();
       <select v-model.number="pageSize" class="so-select" style="width: 100px" aria-label="每页条数"><option v-for="size in [20, 50, 100]" :key="size" :value="size">{{ size }} 条</option></select>
       <button class="so-btn so-btn--ghost so-btn--sm" type="button" :disabled="loading || page <= 1" @click="changePage(page - 1)">上一页</button><span>{{ page }} / {{ pages }}</span><button class="so-btn so-btn--ghost so-btn--sm" type="button" :disabled="loading || page >= pages" @click="changePage(page + 1)">下一页</button>
     </div>
+    </template>
+    <UiModal v-if="manager" :title="manager.row ? '编辑账号' : manager.kind === 'students' ? '新建学生' : '新建后台账号'" @close="closeManager">
+      <form id="account-manager-form" @submit.prevent="saveManager">
+        <fieldset :disabled="managerSaving || managerConfirm" style="border: 0; padding: 0; display: grid; gap: 0.8rem">
+          <label class="so-field"><span class="so-field__label">{{ manager.kind === 'students' ? '学号（8至12位数字）' : '登录名（创建后不可修改）' }}</span><input v-model="accountForm.username" class="so-input" :disabled="!!manager.row" required :maxlength="manager.kind === 'students' ? 12 : 64" autocomplete="off" /></label>
+          <label class="so-field"><span class="so-field__label">姓名</span><input v-model="accountForm.realName" class="so-input" maxlength="32" required /></label>
+          <label class="so-field"><span class="so-field__label">手机号（选填）</span><input v-model="accountForm.phone" class="so-input" type="tel" maxlength="11" /></label>
+          <template v-if="manager.kind === 'merchants'">
+            <label class="so-field"><span class="so-field__label">角色</span><select v-model="accountForm.roleCode" class="so-select"><option value="MERCHANT_OWNER">档口负责人</option><option value="MERCHANT_STAFF">档口店员</option></select></label>
+            <label class="so-field"><span class="so-field__label">所属档口</span><select v-model="accountForm.merchantId" class="so-select" required :disabled="merchantLoading"><option value="">请选择档口</option><option v-for="item in merchantOptions" :key="item.merchantId" :value="item.merchantId">{{ item.name }}（{{ item.merchantId }}）</option></select></label>
+            <p v-if="merchantLoading" class="so-field__hint">正在读取档口</p>
+            <div v-if="merchantError" class="so-banner so-banner--danger" role="alert">{{ merchantError }}<button class="so-btn so-btn--ghost so-btn--sm" type="button" @click="loadMerchantOptions">重试</button></div>
+          </template>
+          <template v-if="!manager.row">
+            <label class="so-field"><span class="so-field__label">初始密码</span><input v-model="accountForm.password" class="so-input" type="password" autocomplete="new-password" required minlength="6" maxlength="64" /></label>
+            <label class="so-field"><span class="so-field__label">确认密码</span><input v-model="accountForm.confirmation" class="so-input" type="password" autocomplete="new-password" required minlength="6" maxlength="64" /></label>
+          </template>
+        </fieldset>
+        <p v-if="managerConfirm" class="so-field__hint" style="margin-top: 1rem">确认{{ manager.row ? '更新' : '创建' }}「{{ accountForm.username }}」？{{ manager.kind === 'admins' ? '该账号拥有整个平台管理权限。' : manager.kind === 'merchants' ? '档口及角色变更会立即影响已有登录的访问权限。' : '账号创建后不会自动登录。' }}</p>
+        <div v-if="managerError" class="so-banner so-banner--danger" role="alert" style="margin-top: 1rem">{{ managerError }}</div>
+      </form>
+      <template #footer><button class="so-btn so-btn--secondary" :disabled="managerSaving" @click="closeManager">取消</button><button v-if="managerConfirm" class="so-btn so-btn--secondary" :disabled="managerSaving" @click="managerConfirm = false">返回修改</button><button class="so-btn so-btn--primary" type="submit" form="account-manager-form" :disabled="managerSaving || (manager.kind === 'merchants' && (merchantLoading || !!merchantError))">{{ managerSaving ? '保存中' : managerConfirm ? '确认保存' : '下一步' }}</button></template>
+    </UiModal>
+    <UiModal v-if="accountChanging" :title="accountChanging.status === 1 ? '禁用账号' : '启用账号'" @close="!accountChangingSaving && (accountChanging = null)">
+      <p>确认{{ accountChanging.status === 1 ? '禁用' : '启用' }}「{{ accountChanging.username }}」？禁用后已有登录也不能继续访问，不会删除账号或已有订单。</p>
+      <div v-if="accountChangingError" class="so-banner so-banner--danger" role="alert">{{ accountChangingError }}</div>
+      <template #footer><button class="so-btn so-btn--secondary" :disabled="accountChangingSaving" @click="accountChanging = null">取消</button><button class="so-btn so-btn--primary" :disabled="accountChangingSaving" @click="saveAccountStatus">{{ accountChangingSaving ? '处理中' : '确认' }}</button></template>
+    </UiModal>
+    <UiModal v-if="passwordTarget" title="重置密码" @close="closePassword">
+      <form id="reset-password-form" @submit.prevent="savePassword">
+        <p>为「{{ passwordTarget.name }}」设置新密码，无需原密码。</p>
+        <p class="so-field__hint" style="margin-top: 0.8rem">重置后原密码不可再用于登录，已登录会话不会立即全部退出。请将新密码安全告知账号使用者。</p>
+        <label class="so-field" style="margin-top: 1rem"><span class="so-field__label">新密码</span><input v-model="newPassword" class="so-input" type="password" autocomplete="new-password" minlength="6" maxlength="64" required :disabled="passwordSaving" /></label>
+        <label class="so-field" style="margin-top: 0.8rem"><span class="so-field__label">确认新密码</span><input v-model="confirmPassword" class="so-input" type="password" autocomplete="new-password" minlength="6" maxlength="64" required :disabled="passwordSaving" /></label>
+        <div v-if="passwordError" class="so-banner so-banner--danger" role="alert" style="margin-top: 1rem">{{ passwordError }}</div>
+      </form>
+      <template #footer><button class="so-btn so-btn--secondary" :disabled="passwordSaving" @click="closePassword">取消</button><button class="so-btn so-btn--primary" type="submit" form="reset-password-form" :disabled="passwordSaving">{{ passwordSaving ? '保存中' : '确认重置' }}</button></template>
+    </UiModal>
     <UiModal v-if="detail" title="用户详情" @close="detail = null">
       <div class="so-kv"><span class="so-kv__key">用户编号</span><span class="so-kv__val">{{ detail.userId }}</span></div>
       <div class="so-kv"><span class="so-kv__key">昵称 / 姓名</span><span class="so-kv__val">{{ detail.nickname || "未填写" }} / {{ detail.realName || "未填写" }}</span></div>
