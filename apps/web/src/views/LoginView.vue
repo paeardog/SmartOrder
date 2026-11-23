@@ -75,7 +75,7 @@ async function submit(): Promise<void> {
 <template>
   <div class="so-login">
     <section class="so-login__card">
-      <p class="so-login__brand">校园点单</p>
+      <p class="so-login__brand"><img class="so-login__brand__mark" src="/logo.png" alt="" />食光校递</p>
       <p class="so-login__hint">登录后可以预点单、查看出餐进度、到店自取。</p>
 
       <div class="so-tabs" style="margin-top: 1.5rem">

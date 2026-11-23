@@ -133,11 +133,11 @@ watch(
   [baseTitle, () => board.arrivals, () => board.flashing],
   () => {
     if (board.arrivals === 0) {
-      document.title = `${baseTitle.value} · 校园点单`;
+      document.title = `${baseTitle.value} · 食光校递`;
       return;
     }
     const prefix = board.flashing ? `【新单 ${board.arrivals}】` : `(${board.arrivals}) `;
-    document.title = `${prefix}${baseTitle.value} · 校园点单`;
+    document.title = `${prefix}${baseTitle.value} · 食光校递`;
   },
   { immediate: true },
 );
@@ -218,7 +218,7 @@ async function switchOpen(): Promise<void> {
   <div v-else class="so-layout">
     <aside class="so-sidebar">
       <div class="so-sidebar__header">
-        <div class="so-sidebar__logo">校园点单 · 控制台</div>
+        <div class="so-sidebar__logo"><img class="so-sidebar__logo__mark" src="/logo.png" alt="" />食光校递 · 控制台</div>
         <div class="so-sidebar__sub">{{ role === 'PLATFORM_ADMIN' ? '全平台运营管理' : shop.profile?.name || consoleStore.account?.merchantName || '未绑定档口' }}</div>
       </div>
       <nav class="so-sidebar__nav">

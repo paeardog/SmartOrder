@@ -134,5 +134,5 @@ router.beforeEach((to) => {
 
 router.afterEach((to) => {
   const title = typeof to.meta["title"] === "string" ? to.meta["title"] : "商家端";
-  document.title = `${title} · 校园点单`;
+  document.title = `${title} · 食光校递`;
 });

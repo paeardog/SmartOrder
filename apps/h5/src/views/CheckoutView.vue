@@ -169,7 +169,7 @@
           </div>
         </section>
 
-        <p class="checkout-legal">提交订单即表示同意《校园点单服务协议》；餐品一经出餐，不支持无理由退单。</p>
+        <p class="checkout-legal">提交订单即表示同意《食光校递服务协议》；餐品一经出餐，不支持无理由退单。</p>
       </div>
 
       <div class="checkout-bar">

@@ -86,5 +86,5 @@ router.beforeEach((to) => {
 
 router.afterEach((to) => {
   const title = typeof to.meta["title"] === "string" ? to.meta["title"] : "";
-  document.title = title === "" ? "校园点单" : `${title} · 校园点单`;
+  document.title = title === "" ? "食光校递" : `${title} · 食光校递`;
 });

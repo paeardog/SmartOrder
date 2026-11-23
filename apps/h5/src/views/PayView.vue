@@ -53,7 +53,7 @@
 
         <section class="pay-tips so-card">
           <div class="pay-tips__row"><van-icon name="gold-coin-o" size="13" /> 支付成功后档口立即接单，超时未支付订单自动关闭。</div>
-          <div class="pay-tips__row"><van-icon name="shield-o" size="13" /> 校园点单提供交易保障，支付信息加密传输。</div>
+          <div class="pay-tips__row"><van-icon name="shield-o" size="13" /> 食光校递提供交易保障，支付信息加密传输。</div>
         </section>
       </div>
 

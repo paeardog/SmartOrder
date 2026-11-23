@@ -56,7 +56,7 @@ function useDemo(name: string): void {
   <div class="login">
     <form class="so-card login__panel" @submit.prevent="submit">
       <div class="login__brand">
-        <div class="so-sidebar__logo">校园点单</div>
+        <div class="so-sidebar__logo"><img class="so-sidebar__logo__mark" src="/logo.png" alt="" />食光校递</div>
         <div class="login__sub">商家与平台控制台</div>
       </div>
 

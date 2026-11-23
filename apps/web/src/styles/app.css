@@ -152,6 +152,12 @@ html, body {
   letter-spacing: -0.02em;
 }
 
+.so-sidebar__logo__mark {
+  width: 28px;
+  height: 28px;
+  object-fit: contain;
+}
+
 .so-sidebar__nav {
   flex: 1;
   padding: 0.75rem;
@@ -2031,6 +2037,14 @@ button.so-address {
   font-weight: var(--font-weight-bold);
   color: var(--primary);
   letter-spacing: -0.02em;
+}
+
+.so-login__brand__mark {
+  width: 1.5rem;
+  height: 1.5rem;
+  object-fit: contain;
+  vertical-align: -0.3rem;
+  margin-right: 0.5rem;
 }
 
 .so-login__hint {

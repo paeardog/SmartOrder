@@ -3,9 +3,9 @@
     <header class="home-hero">
       <div class="home-topbar">
         <div class="home-brand">
-          <span class="home-brand__mark"><van-icon name="fire" size="23" /></span>
+          <span class="home-brand__mark"><img src="/logo.png" alt="食光校递" /></span>
           <div>
-            <div class="home-brand__name">校园点单</div>
+            <div class="home-brand__name">食光校递</div>
             <div class="home-brand__slogan">CAMPUS BITES</div>
           </div>
         </div>
@@ -443,11 +443,15 @@ onBeforeUnmount(() => {
   width: 42px;
   height: 42px;
   flex: none;
-  color: #f27a49;
   background: #fff2d8;
   border-radius: 14px;
-  transform: rotate(-4deg);
   box-shadow: 0 7px 18px rgba(7, 38, 27, 0.18);
+}
+
+.home-brand__mark img {
+  width: 32px;
+  height: 32px;
+  object-fit: contain;
 }
 
 .home-brand__name {

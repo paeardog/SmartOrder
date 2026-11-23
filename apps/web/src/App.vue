@@ -135,7 +135,7 @@ onMounted(() => {
   <div class="so-layout">
     <aside v-if="!bare" class="so-sidebar">
       <header class="so-sidebar__header">
-        <router-link to="/" class="so-sidebar__logo" aria-label="校园点单首页"><AppIcon name="bag" :size="24" /><span>校园点单</span></router-link>
+        <router-link to="/" class="so-sidebar__logo" aria-label="食光校递首页"><img class="so-sidebar__logo__mark" src="/logo.png" alt="" /><span>食光校递</span></router-link>
       </header>
       <nav class="so-sidebar__nav">
         <button

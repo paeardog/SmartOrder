@@ -47,10 +47,19 @@ button {
 }
 
 .so-sidebar__logo {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
   font-size: 1.1rem;
   font-weight: var(--font-weight-bold);
   color: var(--primary);
   letter-spacing: -0.02em;
+}
+
+.so-sidebar__logo__mark {
+  width: 26px;
+  height: 26px;
+  object-fit: contain;
 }
 
 .so-sidebar__sub {

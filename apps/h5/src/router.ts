@@ -4,7 +4,7 @@ import { tokenStore } from "./stores/session";
 import { riderFailureRoute, riderNext } from "./utils/rider";
 
 const routes: RouteRecordRaw[] = [
-  { path: "/", name: "home", component: () => import("./views/HomeView.vue"), meta: { tab: "home", title: "校园点单" } },
+  { path: "/", name: "home", component: () => import("./views/HomeView.vue"), meta: { tab: "home", title: "食光校递" } },
   {
     path: "/merchant/:id",
     name: "menu",
@@ -198,6 +198,6 @@ router.beforeEach(async (to) => {
 });
 
 router.afterEach((to) => {
-  const title = typeof to.meta["title"] === "string" ? to.meta["title"] : "校园点单";
-  document.title = `${title} · 校园点单`;
+  const title = typeof to.meta["title"] === "string" ? to.meta["title"] : "食光校递";
+  document.title = `${title} · 食光校递`;
 });
