@@ -44,15 +44,35 @@ set "COREPACK_ENABLE_DOWNLOAD_PROMPT=0"
 set "CURL=%SystemRoot%\System32\curl.exe"
 set "TAR=%SystemRoot%\System32\tar.exe"
 set "POWERSHELL=%SystemRoot%\System32\WindowsPowerShell\v1.0\powershell.exe"
-set "JDK_URLS=https://aka.ms/download-jdk/microsoft-jdk-17-windows-x64.zip https://api.adoptium.net/v3/binary/latest/17/ga/windows/x64/jdk/hotspot/normal/eclipse"
+rem 有些公司网络连不上证书吊销服务器，schannel 会直接报错，这里放宽成能查就查。
+set "CURL_TLS="
+"%CURL%" --ssl-revoke-best-effort --version >nul 2>&1
+if not errorlevel 1 set "CURL_TLS=--ssl-revoke-best-effort"
+if not defined CURL_TLS (
+  "%CURL%" --ssl-no-revoke --version >nul 2>&1
+  if not errorlevel 1 set "CURL_TLS=--ssl-no-revoke"
+)
+rem 下载顺序：先清华大学镜像，失败再自动换官方源，不需要手动切换。
+set "JDK_PKG=OpenJDK17U-jdk_x64_windows_hotspot_17.0.21.1_2"
+set "JDK_URLS=https://mirrors.tuna.tsinghua.edu.cn/Adoptium/17/jdk/x64/windows/%JDK_PKG%.zip https://mirrors.huaweicloud.com/openjdk/17.0.2/openjdk-17.0.2_windows-x64_bin.zip https://mirrors.aliyun.com/adoptium/17/jdk/x64/windows/%JDK_PKG%.zip https://aka.ms/download-jdk/microsoft-jdk-17-windows-x64.zip https://api.adoptium.net/v3/binary/latest/17/ga/windows/x64/jdk/hotspot/normal/eclipse"
+rem 清华走不通时先用华为、阿里的 Adoptium 同步，再回落到微软和 Adoptium 官方。
 set "MVN_PKG=apache-maven-%MVN_VERSION%"
-rem TUNA Apache mirror first; Apache official archives are the fallback.
-set "MVN_URLS=https://mirrors.tuna.tsinghua.edu.cn/apache/maven/maven-3/%MVN_VERSION%/binaries/%MVN_PKG%-bin.zip https://dlcdn.apache.org/maven/maven-3/%MVN_VERSION%/binaries/%MVN_PKG%-bin.zip https://archive.apache.org/dist/maven/maven-3/%MVN_VERSION%/binaries/%MVN_PKG%-bin.zip"
+rem 清华的 apache 镜像在前，Apache 官方 dlcdn 和 archive 兜底。
+set "MVN_URLS=https://mirrors.tuna.tsinghua.edu.cn/apache/maven/maven-3/%MVN_VERSION%/binaries/%MVN_PKG%-bin.zip https://mirrors.aliyun.com/apache/maven/maven-3/%MVN_VERSION%/binaries/%MVN_PKG%-bin.zip https://mirrors.huaweicloud.com/apache/maven/maven-3/%MVN_VERSION%/binaries/%MVN_PKG%-bin.zip https://dlcdn.apache.org/maven/maven-3/%MVN_VERSION%/binaries/%MVN_PKG%-bin.zip https://archive.apache.org/dist/maven/maven-3/%MVN_VERSION%/binaries/%MVN_PKG%-bin.zip"
 set "MYSQL_PKG=mysql-%MYSQL_VERSION%-winx64"
+rem 清华、阿里、华为、中科大等国内镜像都没有 MySQL 的 Windows 版，只能走官方 CDN。
 set "MYSQL_URLS=https://cdn.mysql.com/archives/mysql-8.0/%MYSQL_PKG%.zip https://dev.mysql.com/get/Downloads/MySQL-8.0/%MYSQL_PKG%.zip"
 set "NODE_PKG=node-%NODE_VERSION%-win-x64"
-rem TUNA Node.js mirror first; official Node.js distribution is the fallback.
-set "NODE_URLS=https://mirrors.tuna.tsinghua.edu.cn/nodejs-release/%NODE_VERSION%/%NODE_PKG%.zip https://nodejs.org/dist/%NODE_VERSION%/%NODE_PKG%.zip https://npmmirror.com/mirrors/node/%NODE_VERSION%/%NODE_PKG%.zip"
+rem 清华的 nodejs-release 镜像在前，npmmirror 同步的 nodejs 镜像其次，Node.js 官方最后。
+set "NODE_URLS=https://mirrors.tuna.tsinghua.edu.cn/nodejs-release/%NODE_VERSION%/%NODE_PKG%.zip https://npmmirror.com/mirrors/node/%NODE_VERSION%/%NODE_PKG%.zip https://nodejs.org/dist/%NODE_VERSION%/%NODE_PKG%.zip"
+rem 前端依赖和 pnpm 用的国内 npm 镜像，失败后自动回到官方 registry。
+set "NPM_REGISTRY=https://registry.npmmirror.com"
+rem Maven 依赖的国内仓库，只替换 Maven Central，服务器上没有快照的包仍然去 Central 取。
+set "MVN_MIRROR=https://maven.aliyun.com/repository/public"
+set "M2_SETTINGS=%TOOLS%\m2-settings.xml"
+set "MAVEN_DIST=%TOOLS%\%MVN_PKG%"
+set "MVN_ARGS="
+if not defined MAVEN_USER_SETTINGS set "MAVEN_USER_SETTINGS=SHARED"
 
 set "MODE=%~1"
 if "%MODE%"=="" set "MODE=start"
@@ -157,6 +177,8 @@ set "CONSOLE_UP=0"
 call :resolve_lan_ip
 echo.
 echo status    starting backend, web, h5 and console, the first run downloads dependencies
+echo [提示] 第一次运行会下载 Maven 和 pnpm 依赖，后台在做事，不是卡住了。
+echo        进度和错误都写在 .tools 目录下的日志里，启动完成后会打印访问地址。
 echo logs      %APP_LOG%  %WEB_LOG%  %H5_LOG%  %CONSOLE_LOG%
 echo.
 
@@ -171,7 +193,10 @@ if defined SO_DB_URL (
 set "BACKEND_STARTED=1"
 del "%APP_LOG%" >nul 2>&1
 echo backend   mvn spring-boot:run, a first run also downloads the Maven dependencies
-"%POWERSHELL%" -NoProfile -NonInteractive -Command "Start-Process -FilePath 'cmd.exe' -ArgumentList '/c call mvn -B -f server\pom.xml spring-boot:run > .tools\backend.log 2>&1' -WorkingDirectory '%ROOT%' -WindowStyle Hidden"
+echo [提示] 后端正在启动，首次下载 Maven 依赖可能要好几分钟，日志在 .tools\backend.log。
+echo        依赖默认从国内仓库下载，第一次拉完会缓存起来，以后启动就不用再下了。
+echo        等待期间每 20 秒会显示一行后端日志，看到“正在下载依赖”就是还在拉 Maven 依赖。
+"%POWERSHELL%" -NoProfile -NonInteractive -Command "Start-Process -FilePath 'cmd.exe' -ArgumentList '/c call %MVN% -B -f server\pom.xml spring-boot:run > .tools\backend.log 2>&1' -WorkingDirectory '%ROOT%' -WindowStyle Hidden"
 call :wait_for_port %APP_PORT% %BACKEND_WAIT% "%APP_LOG%"
 if "%WAIT_RESULT%"=="up" goto :backend_up
 call :report_stopped backend "%APP_LOG%" %APP_PORT% %BACKEND_WAIT%
@@ -392,10 +417,23 @@ if "%TAIL_LINES%"=="0" echo read %~2 by hand
 :report_end
 exit /b 0
 
+:show_log_progress
+if not exist "%~1" exit /b 0
+set "PROGRESS_PATH=%~1"
+set "PROGRESS_HINT=%~2"
+del "%PROBE_FILE%" >nul 2>&1
+"%POWERSHELL%" -NoProfile -NonInteractive -ExecutionPolicy Bypass -Command "$t = Get-Content -LiteralPath $env:PROGRESS_PATH -Tail 6 -ErrorAction SilentlyContinue; if (-not $t) { exit 0 }; $map = @{ 'Downloading from' = '正在下载依赖'; 'Downloaded from' = '下载完成'; 'BUILD SUCCESS' = '后端构建完成'; 'BUILD FAILURE' = '构建失败'; 'APPLICATION FAILED TO START' = '启动失败'; 'Started ' = '后端已启动'; 'Tomcat started' = '后端已启动'; 'ERR_PNPM' = '依赖安装出错'; 'is not recognized' = '命令无法识别' }; $hits = @(); foreach ($line in $t) { foreach ($key in $map.Keys) { if ($line.Contains($key)) { if ($hits -notcontains $map[$key]) { $hits += $map[$key] }; break } } }; if ($hits.Count -gt 0) { Write-Output ('[进度] ' + $env:PROGRESS_HINT + '：' + ($hits -join '；')) } else { $last = ('') + $t[-1]; if ($last.Length -gt 70) { $last = $last.Substring($last.Length - 70) }; Write-Output ('[进度] ' + $env:PROGRESS_HINT + '：' + $last) }" > "%PROBE_FILE%" 2>nul
+if not exist "%PROBE_FILE%" exit /b 0
+for /f "usebackq delims=" %%L in ("%PROBE_FILE%") do echo %%L
+del "%PROBE_FILE%" >nul 2>&1
+exit /b 0
+
 :wait_for_port
 set "WAIT_RESULT=timeout"
 set /a WAIT_LIMIT=%~2
 set "WAIT_TICKS=0"
+set "WAIT_INDEX=0"
+set "WAIT_DETAIL_TICKS=0"
 :wait_loop
 ping -n 2 127.0.0.1 >nul
 call :port_listening %~1
@@ -407,7 +445,16 @@ if %WAIT_TICKS% GEQ %WAIT_LIMIT% exit /b 0
 set /a WAIT_ELAPSED=WAIT_TICKS*2
 set /a WAIT_BUCKET=WAIT_TICKS/30
 set /a WAIT_REMAINDER=WAIT_TICKS-WAIT_BUCKET*30
+set /a WAIT_INDEX+=1
+set /a WAIT_DETAIL=WAIT_INDEX/10
+set /a WAIT_DETAIL_TICKS=WAIT_DETAIL*10
+if %WAIT_DETAIL_TICKS%==%WAIT_INDEX% goto :wait_progress
 if %WAIT_REMAINDER%==0 echo           waiting for port %~1, %WAIT_ELAPSED%s elapsed
+goto :wait_loop
+:wait_progress
+if not exist "%~3" goto :wait_loop
+if "%WAIT_INDEX%"=="10" echo           waiting for port %~1, downloading or starting, this can take minutes
+call :show_log_progress "%~3" "已等 %WAIT_ELAPSED% 秒"
 goto :wait_loop
 :wait_up
 set "WAIT_RESULT=up"
@@ -467,8 +514,10 @@ call :probe_java
 if not errorlevel 1 goto :java_ready
 if not "%AUTO_INSTALL%"=="1" goto :java_missing
 echo.
-echo jdk       no usable JDK 17 here, fetching one into .tools, about 190 MB
-if defined JAVA_HOME echo jdk       %JAVA_VER% is what this machine has, Spring Boot 3 needs 17 or newer
+echo [下载] Java 运行环境 JDK 17，本机没有找到可用的版本。
+echo        安装包约 190 MB，会下载到 .tools 目录，第一次运行需要等几分钟。
+echo        默认使用清华大学镜像，连不上会自动换华为云、阿里云，最后才用官方源。
+if defined JAVA_HOME echo [提示] 本机现有 Java 版本是 %JAVA_VER%，本项目需要 17 或更高版本。
 call :fetch_extract jdk17.zip "%JDK_URLS%"
 if errorlevel 1 goto :java_missing
 set "JAVA_HOME="
@@ -478,9 +527,10 @@ if not errorlevel 1 goto :java_ready
 
 :java_missing
 echo.
-echo Need a JDK 17 or newer that has javac in it, a browser-only Java is not enough.
-echo Unzip a Windows x64 JDK 17 as %TOOLS%\jdk-17, or install one and reopen the
-echo terminal, or point JAVA_HOME at it. AUTO_INSTALL=%AUTO_INSTALL% keeps downloads off.
+echo 没有找到带 javac 的 JDK 17 或更高版本，只有浏览器里的 Java 是不够的。
+echo 自动下载没有成功时，可以手动解压一个 Windows x64 JDK 17 到 %TOOLS%\jdk-17，
+echo 或者安装 JDK 后设置 JAVA_HOME 指向它，再重新运行 start.bat。
+echo 设置 AUTO_INSTALL=0 可以完全关闭自动下载。
 exit /b 1
 
 :java_ready
@@ -500,7 +550,8 @@ for /f "delims=" %%I in ('where mvn 2^>nul') do if not defined MVN (
 if defined MVN goto :maven_ready
 if not "%AUTO_INSTALL%"=="1" goto :maven_missing
 echo.
-echo maven     not found, fetching %MVN_PKG% into .tools, about 9 MB
+echo [下载] Maven 构建工具 %MVN_PKG%，安装包约 9 MB。
+echo        默认使用清华大学镜像，失败会自动换阿里云、华为云，最后才用 Apache 官方源。
 call :fetch_extract mvn.zip "%MVN_URLS%"
 if errorlevel 1 goto :maven_missing
 set "MVN="
@@ -508,14 +559,50 @@ for /d %%D in ("%TOOLS%\apache-maven-*") do if exist "%%D\bin\mvn.cmd" set "MVN=
 if defined MVN goto :maven_ready
 
 :maven_missing
-echo No usable Maven found.
-echo Unzip %MVN_PKG%-bin.zip as %TOOLS%\%MVN_PKG%, or put mvn.cmd on PATH and rerun.
-echo Maven 3.8 or newer works. AUTO_INSTALL=%AUTO_INSTALL% keeps downloads off.
+echo 没有找到可用的 Maven。
+echo 可以手动解压 %MVN_PKG%-bin.zip 到 %TOOLS%\%MVN_PKG%，或者把 mvn.cmd 放进 PATH 后重试。
+echo Maven 3.8 或更高版本都可以。设置 AUTO_INSTALL=0 可以关闭自动下载。
 exit /b 1
 
 :maven_ready
 for %%I in ("%MVN%") do set "PATH=%%~dpI;%PATH%"
+set "MVN_IS_PORTABLE=0"
+for %%I in ("%MVN%") do if /i "%%~dpI"=="%MAVEN_DIST%\bin\" set "MVN_IS_PORTABLE=1"
+call :prepare_maven_mirror
+if defined MVN_ARGS set "MVN=%MVN% %MVN_ARGS%"
 echo maven     %MVN%
+exit /b 0
+
+:prepare_maven_mirror
+rem .tools 里自己下载的 Maven 用生成的 settings.xml 覆盖用户设置；
+rem PATH 里现成的 Maven 默认叠在用户 settings 之上，改成 STANDALONE 就只用生成的配置。
+if not "%MVN_IS_PORTABLE%"=="1" if not "%MAVEN_USER_SETTINGS%"=="STANDALONE" exit /b 0
+if not exist "%M2_SETTINGS%" goto :write_maven_mirror
+findstr /c:"%MVN_MIRROR%" "%M2_SETTINGS%" >nul 2>&1
+if not errorlevel 1 goto :maven_mirror_ready
+:write_maven_mirror
+if not exist "%TOOLS%" mkdir "%TOOLS%"
+> "%M2_SETTINGS%" (
+  echo ^<?xml version="1.0" encoding="UTF-8"?^>
+  echo ^<settings xmlns="http://maven.apache.org/SETTINGS/1.0.0"
+  echo   xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+  echo   xsi:schemaLocation="http://maven.apache.org/SETTINGS/1.0.0 https://maven.apache.org/xsd/settings-1.0.0.xsd"^>
+  echo   ^<mirrors^>
+  echo     ^<mirror^>
+  echo       ^<id^>smartorder-fast^</id^>
+  echo       ^<name^>domestic mirror for maven central^</name^>
+  echo       ^<url^>%MVN_MIRROR%^</url^>
+  echo       ^<mirrorOf^>central^</mirrorOf^>
+  echo     ^</mirror^>
+  echo   ^</mirrors^>
+  echo ^</settings^>
+)
+set "MVN_ARGS=-s "%M2_SETTINGS%""
+if /i "%MAVEN_USER_SETTINGS%"=="STANDALONE" set "MVN_ARGS=%MVN_ARGS% -gs "%M2_SETTINGS%""
+:maven_mirror_ready
+echo [加速] Maven 依赖从国内仓库 %MVN_MIRROR% 下载，比官方 Central 快很多。
+echo        Maven 自己会记住哪些地址不通，下次直接走能用的那个，不用手动设置。
+echo        想完全用官方仓库，设置 MAVEN_USER_SETTINGS=SHARED 即可。
 exit /b 0
 
 :resolve_node
@@ -529,7 +616,8 @@ if "%NODE_HOME:~-1%"=="\" set "NODE_HOME=%NODE_HOME:~0,-1%"
 if defined NODE_HOME goto :node_probe
 if not "%AUTO_INSTALL%"=="1" goto :node_missing
 echo.
-echo node      not found, fetching %NODE_PKG% into .tools, about 35 MB
+echo [下载] Node.js 运行环境 %NODE_VERSION%，安装包约 35 MB。
+echo        默认使用清华大学镜像，失败会自动换 npmmirror，最后才用 Node.js 官方源。
 call :fetch_extract node.zip "%NODE_URLS%"
 if errorlevel 1 goto :node_missing
 set "NODE_HOME="
@@ -537,9 +625,9 @@ for /d %%D in ("%TOOLS%\node-v*") do if exist "%%D\node.exe" set "NODE_HOME=%%D"
 if defined NODE_HOME goto :node_probe
 
 :node_missing
-echo No usable Node.js found.
-echo The frontend runs on vite and needs Node.js 22.12 or newer.
-echo Unzip %NODE_PKG%.zip as %TOOLS%\%NODE_PKG%, or install Node and reopen the terminal.
+echo 没有找到可用的 Node.js。
+echo 前端用 vite 构建，需要 Node.js 22.12 或更高版本。
+echo 可以手动解压 %NODE_PKG%.zip 到 %TOOLS%\%NODE_PKG%，或者安装 Node.js 后重新打开终端。
 exit /b 1
 
 :node_probe
@@ -567,7 +655,8 @@ for /f "delims=" %%I in ('where pnpm 2^>nul') do if not defined PNPM (
 if defined PNPM goto :pnpm_ready
 if not "%AUTO_INSTALL%"=="1" goto :pnpm_missing
 echo.
-echo pnpm      not found, installing pnpm %PNPM_VERSION% into .tools\bin
+echo [下载] 没有找到 pnpm，正在安装 pnpm %PNPM_VERSION% 到 .tools\bin。
+echo        默认使用国内 npm 镜像，失败会自动改用官方源，文件很小，很快就好。
 call :install_pnpm
 if errorlevel 1 goto :pnpm_missing
 set "PNPM="
@@ -575,10 +664,11 @@ if exist "%BIN_DIR%\pnpm.cmd" set "PNPM=%BIN_DIR%\pnpm.cmd"
 if defined PNPM goto :pnpm_ready
 
 :pnpm_missing
-echo No pnpm found, and the automatic install left nothing behind.
-echo This workspace needs pnpm %PNPM_VERSION%, install it yourself with
+echo 没有找到可用的 pnpm，自动安装也没有成功。
+echo 本项目需要 pnpm %PNPM_VERSION%，可以手动执行：
 echo   corepack enable pnpm
-echo or   npm install -g pnpm@%PNPM_VERSION%, then rerun.
+echo 或   npm install -g pnpm@%PNPM_VERSION%
+echo 装好后重新运行 start.bat。
 exit /b 1
 
 :pnpm_ready
@@ -587,6 +677,7 @@ echo pnpm      %PNPM%
 exit /b 0
 
 :install_pnpm
+set "COREPACK_NPM_REGISTRY=%NPM_REGISTRY%"
 set "COREPACK="
 if exist "%NODE_HOME%\corepack.cmd" set "COREPACK=%NODE_HOME%\corepack.cmd"
 if defined COREPACK (
@@ -595,25 +686,50 @@ if defined COREPACK (
   if exist "%BIN_DIR%\pnpm.cmd" exit /b 0
 )
 if not exist "%NODE_HOME%\npm.cmd" exit /b 1
-call "%NODE_HOME%\npm.cmd" install --global --prefix "%BIN_DIR%" pnpm@%PNPM_VERSION%
+call "%NODE_HOME%\npm.cmd" install --global --prefix "%BIN_DIR%" --no-fund --no-audit --registry=%NPM_REGISTRY% pnpm@%PNPM_VERSION%
+if exist "%BIN_DIR%\pnpm.cmd" exit /b 0
+echo [下载] 国内镜像没有装好 pnpm，改用官方源重试。
+call "%NODE_HOME%\npm.cmd" install --global --prefix "%BIN_DIR%" --no-fund --no-audit pnpm@%PNPM_VERSION%
 if exist "%BIN_DIR%\pnpm.cmd" exit /b 0
 exit /b 1
 
 :ensure_deps
-if exist "%ROOT%\node_modules\.modules.yaml" exit /b 0
-echo.
-echo web       installing the workspace dependencies, first run only
-call "%PNPM%" install --frozen-lockfile
-if not errorlevel 1 exit /b 0
-echo web       the lockfile was rejected, installing from package.json instead
-call "%PNPM%" install
-if errorlevel 1 (
-  echo The dependency install failed, read the message above.
-  echo On a slow or blocked registry put an .npmrc next to package.json with
-  echo   registry=https://registry.npmmirror.com
-  exit /b 1
-)
+set "DEPS_STAMP=%TOOLS%\deps.sha256"
+set "STAMPED="
+set "LOCK_HASH="
+for /f "skip=1 delims=" %%H in ('certutil -hashfile "%ROOT%\pnpm-lock.yaml" SHA256 2^>nul') do if not defined LOCK_HASH set "LOCK_HASH=%%H"
+if not defined LOCK_HASH goto :deps_install
+if not exist "%ROOT%\node_modules\.modules.yaml" goto :deps_install
+if not exist "%DEPS_STAMP%" goto :deps_install
+set /p "STAMPED=" < "%DEPS_STAMP%"
+if not "%STAMPED%"=="%LOCK_HASH%" goto :deps_install
 exit /b 0
+:deps_install
+echo.
+echo [依赖] 正在安装前端依赖，第一次运行需要几分钟，请耐心等待。
+echo        默认使用国内镜像 %NPM_REGISTRY%，失败会自动改用官方源。
+call "%PNPM%" install --frozen-lockfile --registry=%NPM_REGISTRY%
+if not errorlevel 1 goto :deps_ok
+echo [依赖] 国内镜像这一步没有成功，改用官方源再试。
+call "%PNPM%" install --frozen-lockfile
+if not errorlevel 1 goto :deps_ok
+echo [依赖] 依赖清单和锁文件对不上，改为按 package.json 重新解析。
+call "%PNPM%" install --registry=%NPM_REGISTRY%
+if not errorlevel 1 goto :deps_ok
+echo [依赖] 国内镜像装不上，最后用官方源再试一次。
+call "%PNPM%" install
+if errorlevel 1 goto :deps_failed
+:deps_ok
+if defined LOCK_HASH >"%DEPS_STAMP%" echo %LOCK_HASH%
+echo [依赖] 安装完成。
+exit /b 0
+
+:deps_failed
+echo [依赖失败] 前端依赖没有装完，请检查网络后重新运行 start.bat。
+echo            公司网络需要代理时，先设置 HTTP_PROXY 和 HTTPS_PROXY 环境变量。
+echo            也可以在本目录的 package.json 旁放一个 .npmrc，写入：
+echo              registry=https://registry.npmmirror.com
+exit /b 1
 
 :fetch_extract
 if not exist "%CURL%" goto :fetch_missing_tools
@@ -628,28 +744,55 @@ del "%ZIP_FILE%" >nul 2>&1
 exit /b 0
 
 :fetch_to
+if not defined FETCH_SPEED_GIVE_UP set "FETCH_SPEED_GIVE_UP=8"
 set "PART_FILE=%~2.part"
 for %%U in (%~1) do (
-  echo download  trying %%U
-  "%CURL%" -L --fail --retry 2 --retry-delay 3 --connect-timeout 15 -S -o "%PART_FILE%" "%%U"
+  call :announce_url "%%U"
+  "%CURL%" %CURL_TLS% -L --fail --retry 1 --retry-delay 3 --connect-timeout 15 --speed-limit 1024 --speed-time %FETCH_SPEED_GIVE_UP% -S --progress-bar -o "%PART_FILE%" "%%U"
   if not errorlevel 1 if exist "%PART_FILE%" (
     move /y "%PART_FILE%" "%~2" >nul
+    echo [下载] 完成。
     exit /b 0
   )
   del "%PART_FILE%" >nul 2>&1
+  echo [下载] 这个来源没有成功，自动换下一个来源...
+  echo        某条线路要是一直没有数据，十几秒后会自动放弃，不用一直等。
 )
-echo download  none of the mirrors answered
+echo [下载失败] 所有来源都没有下载成功，请检查网络后重新运行。
+echo            也可以手动下载对应的压缩包，放进 %DL_DIR% 再重试。
 exit /b 1
 
+:announce_url
+set "URL_SOURCE=官方源"
+echo %~1| findstr /i /c:"tuna.tsinghua.edu.cn" >nul
+if not errorlevel 1 set "URL_SOURCE=清华大学镜像"
+echo %~1| findstr /i /c:"npmmirror.com" >nul
+if not errorlevel 1 set "URL_SOURCE=国内镜像 npmmirror"
+echo %~1| findstr /i /c:"aliyun.com" >nul
+if not errorlevel 1 set "URL_SOURCE=阿里云镜像"
+echo %~1| findstr /i /c:"huaweicloud.com" >nul
+if not errorlevel 1 set "URL_SOURCE=华为云镜像"
+echo %~1| findstr /i /c:"ustc.edu.cn" >nul
+if not errorlevel 1 set "URL_SOURCE=中科大镜像"
+echo.
+echo [下载] 来源：%URL_SOURCE%
+echo        地址：%~1
+echo        进度条走完之前请不要关闭窗口，这个来源失败会自动换下一个。
+exit /b 0
+
 :expand_zip
+echo [安装] 正在解压 %~nx1 到 .tools 目录，请稍候...
 "%TAR%" -xf "%~1" -C "%TOOLS%"
-if not errorlevel 1 exit /b 0
-echo extract   %TAR% could not open %~1
+if not errorlevel 1 (
+  echo [安装] 解压完成。
+  exit /b 0
+)
+echo [安装失败] 压缩包打不开，可能没有下载完整，请重新运行 start.bat。
 exit /b 1
 
 :fetch_missing_tools
-echo %SystemRoot%\System32\curl.exe or tar.exe is missing, this Windows is too old for
-echo the automatic download. Unzip the tools into .tools by hand, see start.bat help.
+echo 系统里缺少 curl.exe 或 tar.exe，无法自动下载。
+echo 这个 Windows 版本太旧，请手动把工具解压到 .tools 目录，具体见 start.bat help。
 exit /b 1
 
 :resolve_mysql
@@ -658,8 +801,9 @@ for /d %%D in ("%TOOLS%\mysql-*") do if exist "%%D\bin\mysqld.exe" set "MYSQL_HO
 if defined MYSQL_HOME goto :mysql_portable
 if not "%AUTO_INSTALL%"=="1" goto :mysql_system
 echo.
-echo mysql     not found, fetching %MYSQL_PKG% into .tools, about 240 MB
-echo mysql     this is the big one, keep this window open
+echo [下载] MySQL 数据库 %MYSQL_VERSION%，压缩包约 240 MB，是最大的一项。
+echo        清华大学镜像站不提供 Windows 版 MySQL，这一步从 MySQL 官方 CDN 下载。
+echo        下载时间会比较长，进度条走完前请不要关闭窗口；中途断了会自动重试。
 call :fetch_extract mysql.zip "%MYSQL_URLS%"
 if errorlevel 1 goto :mysql_system
 set "MYSQL_HOME="
@@ -689,10 +833,10 @@ echo Set SO_DB_URL to your full jdbc url if it differs from application-dev.yml.
 exit /b 0
 
 :mysql_missing
-echo No MySQL found.
-echo Unzip %MYSQL_PKG%.zip as %TOOLS%\%MYSQL_PKG% and rerun, the script then does
-echo initialize, start, schema.sql and seed.sql by itself on port 3307.
-echo A MySQL you already run works too, put mysql.exe on PATH and set SO_DB_URL.
+echo 没有找到可用的 MySQL。
+echo 可以手动解压 %MYSQL_PKG%.zip 到 %TOOLS%\%MYSQL_PKG%，然后重新运行 start.bat，
+echo 脚本会自动完成初始化、启动并导入 schema.sql 和 seed.sql，端口 3307。
+echo 如果你自己已经装了 MySQL，把 mysql.exe 放进 PATH 并设置 SO_DB_URL 也可以。
 exit /b 1
 
 :build_client_args
@@ -954,6 +1098,16 @@ echo A machine with none of the tools downloads about 470 MB into .tools on the 
 echo run, for JDK 17, Maven, MySQL and Node.js, and then the Maven and pnpm
 echo dependencies on top of that. Keep the window open while it works.
 echo AUTO_INSTALL=0 keeps every download off and only prints what to do by hand.
+echo Downloads try the Tsinghua mirror first, then Aliyun and Huawei Cloud, and the
+echo official source last; MySQL only ships the Windows zip on its own CDN. A source
+echo that sends nothing for FETCH_SPEED_GIVE_UP seconds, 8 by default, is dropped and
+echo the next one is tried, so a half-open connection cannot stall the setup.
+echo Maven dependencies come from the Aliyun repository through .tools\m2-settings.xml,
+echo and Maven falls back to Central by itself for whatever the mirror does not have;
+echo MAVEN_USER_SETTINGS=SHARED leaves an existing Maven alone, STANDALONE means the
+echo generated settings are the only ones used.
+echo Frontend dependencies install from the npmmirror registry first, then the
+echo official npm registry, so a blocked npmjs.org does not stop the setup.
 echo.
 echo Toolchain lookup order: .tools\jdk-* then JAVA_HOME then PATH javac;
 echo .tools\apache-maven-* then PATH for Maven; .tools\node-v* then PATH for Node.js;
@@ -974,7 +1128,7 @@ echo.
 echo Environment overrides: AUTO_INSTALL, BACKEND_WAIT, WEB_WAIT, H5_WAIT, CONSOLE_WAIT,
 echo DB_PORT, DB_USER, DB_PASS, SO_DB_URL, WEB_PORT, H5_PORT, CONSOLE_PORT,
 echo OPEN_WEB, OPEN_H5, OPEN_CONSOLE, START_WEB, START_H5, START_CONSOLE,
-echo MVN_VERSION, MYSQL_VERSION,
+echo MVN_VERSION, MYSQL_VERSION, FETCH_SPEED_GIVE_UP, MAVEN_USER_SETTINGS,
 echo NODE_VERSION, PNPM_VERSION.
 goto :eof
 
